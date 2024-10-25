@@ -40,6 +40,24 @@ PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带�
 >   - `CCTV$1 => regex:/^CCTV[-\s]*(\d+(\s*P(LUS)?|[K\+])?)(?![\s-]*(美洲|欧洲)).*/i` ：将 `CCTV 1综合`、`CCTV-4K频道`、`CCTV - 5+频道`、`CCTV - 5PLUS频道` 等替换成 `CCTV1`、`CCTV4K`、`CCTV5+`、`CCTV5PLUS`（排除 `CCTV4美洲` 和 `CCTV4欧洲`）
 
 ## 📝 更新日志
+### 2024-10-24
+
+1. 新增：预告数据不存在时，尝试使用 猫 接口获取
+2. 新增：上传 `txt/m3u` 直播源，返回匹配 `EPG及台标` 的 `m3u` 文件
+3. 优化：更换 猫 接口，更方便更稳定（直接使用频道名即可）
+4. 优化：内置台标地址增至 2700+
+
+### 2024-10-15
+
+1. 新增：获取 猫 数据
+2. 优化：未使用台标文件从自动清理改为手动清理
+3. 优化：内置台标地址增至 2000+
+
+### 2024-10-7
+
+1. 新增：编辑台标频道名
+2. 修复：打开管理数据页面后退出异常
+
 ### 2024-9-29
 
 1. 修复：导入文件大于2M时异常
@@ -59,25 +77,6 @@ PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带�
 2. 优化：默认台标列表
 3. 优化：新建自定义台标提示
 4. 优化：转存台标提示，转存进度显示
-
-### 2024-9-22
-
-1. 优化：更改台标 `CDN` 源，并替换为裁切版本
-2. 修复：导入数据路径错误
-3. 修复：定时任务误删本地台标
-4. 修复：超级直播返回字段
-
-### 2024-9-21：
-
-1. 新增：上传任意频道台标
-2. 新增：一键上传所有 `CDN` 台标到服务器
-3. 新增：无节目表频道的台标匹配
-4. 优化：更新时清理未使用台标文件
-
-### 2024-9-19：
-
-1. 新增：台标管理，支持 `URL` 及 `上传`，模糊匹配，返回 `DIYP` 、 `超级直播` 及 `xmltv` 格式（感谢[fanmingming/live](https://github.com/fanmingming/live)、[wanglindl/TVlogo](https://github.com/wanglindl/TVlogo)）
-2. 修复：超级直播时间戳、`showTime` 字段错误
 
 ### 历史更新记录见[CHANGELOG.md](./CHANGELOG.md)
 
@@ -245,3 +244,6 @@ PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带�
 - [EPG 51zmt](http://epg.51zmt.top:8000/)
 - [fanmingming/live](https://github.com/fanmingming/live)
 - [wanglindl/TVlogo](https://github.com/wanglindl/TVlogo)
+
+## Star History
+[![Star History Chart](https://api.star-history.com/svg?repos=taksssss/PHP-EPG-Docker-Server&type=Date)](https://star-history.com/#taksssss/PHP-EPG-Docker-Server&Date)

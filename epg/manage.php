@@ -147,7 +147,7 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update'])) {
 
     // 获取表单数据并去除每个 URL 末尾的换行符
-    $xml_urls = array_map('trim', explode("\n", trim($_POST['xml_urls'])));
+    $xml_urls = array_map('trim', explode("\n", str_replace(["，", "："], [",", ":"], trim($_POST['xml_urls']))));
 
     // 过滤和规范化 xml_urls
     $xml_urls = array_values(array_map(function($url) {
@@ -179,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update'])) {
     if ($mappings = trim($_POST['channel_mappings'] ?? '')) {
         foreach (array_filter(array_map('trim', explode("\n", $mappings))) as $line) {
             list($search, $replace) = preg_split('/=》|=>/', $line);
-            $channel_mappings[trim(str_replace("，", ",", trim($search)), '[]')] = trim($replace);
+            $channel_mappings[trim($search)] = trim(str_replace("，", ",", trim($replace)), '[]');
         }
     }
 
@@ -189,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update'])) {
             array_reduce(json_decode($_POST['channel_bind_epg'], true), function($result, $item) {
                 $epgSrc = preg_replace('/^【已停用】/', '', $item['epg_src']);
                 if (!empty($item['channels'])) {
-                    $result[$epgSrc] = $item['channels'];
+                    $result[$epgSrc] = trim(str_replace("，", ",", trim($item['channels'])), '[]');
                 }
                 return $result;
             }, [])
@@ -272,6 +272,8 @@ try {
             $action = 'get_gen_list';
         } elseif (isset($_GET['url'])) {
             $action = 'download_data';
+        } elseif (isset($_GET['delete_unused_icons'])) {
+            $action = 'delete_unused_icons';
         }
 
         // 根据操作类型执行不同的逻辑
@@ -336,16 +338,17 @@ try {
                 
             case 'get_channel_bind_epg':
                 // 获取频道绑定的 EPG
-                $channels = $db->query("SELECT DISTINCT UPPER(channel) FROM epg_data ORDER BY UPPER(channel) ASC")->fetchAll(PDO::FETCH_COLUMN);
+                $channels = $db->query("SELECT DISTINCT channel FROM epg_data ORDER BY channel ASC")->fetchAll(PDO::FETCH_COLUMN);
                 $channelBindEpg = $Config['channel_bind_epg'] ?? [];
                 $xmlUrls = $Config['xml_urls'];
-                $filteredUrls = array_values(array_map(function($url) {
+                $filteredUrls = array_values(array_filter(array_map(function($url) {
                     $url = trim($url);
+                    if (preg_match('/^#?\s*tvmao/', $url)) { return '';}
                     $url = (strpos($url, '#') === 0)
                         ? preg_replace('/^([^#]*#[^#]*)#.*$/', '$1', $url)
                         : preg_replace('/#.*$/', '', $url);
                     return trim($url);
-                }, $xmlUrls));
+                }, $xmlUrls)));
                 $dbResponse = array_map(function($epgSrc) use ($channelBindEpg) {
                     $cleanEpgSrc = trim(preg_replace('/^\s*#\s*/', '', $epgSrc));
                     $isInactive = strpos(trim($epgSrc), '#') === 0;
@@ -426,6 +429,26 @@ try {
                 }
                 break;
 
+            case 'delete_unused_icons':
+                // 清除未在使用的台标
+                $iconUrls = array_map(function($url) {
+                    return parse_url($url, PHP_URL_PATH);
+                }, array_values($iconList));
+                $iconPath = __DIR__ . '/data/icon';
+                $parentRltPath = '/' . basename(__DIR__) . '/data/icon/';
+                $deletedCount = 0;
+                foreach (scandir($iconPath) as $file) {
+                    if ($file === '.' || $file === '..') continue;
+                    $iconRltPath = $parentRltPath . $file;
+                    if (!in_array($iconRltPath, $iconUrls)) {
+                        if (@unlink($iconPath . '/' . $file)) {
+                            $deletedCount++;
+                        }
+                    }
+                }
+                $dbResponse = ['success' => true, 'message' => "共清理了 $deletedCount 个台标"];
+                break;
+
             default:
                 $dbResponse = null;
                 break;
@@ -452,6 +475,8 @@ try {
             $action = 'upload_icon';
         } elseif (isset($_POST['update_icon_list'])) {
             $action = 'update_icon_list';
+        } elseif (isset($_FILES['m3utxtFile'])) {
+            $action = 'm3u_match_icons';
         }
 
         switch ($action) {
@@ -524,7 +549,6 @@ try {
                 $fileName = $file['name'];
                 $uploadFile = $iconDir . $fileName;
                 if ($file['type'] === 'image/png' && move_uploaded_file($file['tmp_name'], $uploadFile)) {
-                    $serverUrl = (($_SERVER['HTTPS'] ?? '') === 'on' ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'];
                     $iconUrl = $serverUrl . dirname($_SERVER['SCRIPT_NAME']) . '/data/icon/' . basename($fileName);
                     echo json_encode(['success' => true, 'iconUrl' => $iconUrl]);
                 } else {
@@ -534,6 +558,7 @@ try {
 
             case 'update_icon_list':
                 // 更新图标
+                $iconList = [];
                 $updatedIcons = json_decode($_POST['updatedIcons'], true);
                 foreach ($updatedIcons as $channelData) {
                     $channelName = strtoupper(trim($channelData['channel']));
@@ -550,7 +575,117 @@ try {
                 } else {
                     echo json_encode(['success' => true]);
                 }
-                exit;                
+                exit;
+
+            case 'm3u_match_icons':
+                // 频道数据模糊匹配
+                function dbChNameMatch($channelName) {
+                    global $db;
+                    // 获取数据库类型（mysql 或 sqlite）
+                    $concat = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' 
+                        ? "CONCAT('%', channel, '%')" 
+                        : "'%' || channel || '%'";
+                    
+                    $stmt = $db->prepare("
+                        SELECT channel
+                        FROM epg_data 
+                        WHERE date = :date
+                        AND (
+                            channel = :channel
+                            OR channel LIKE :like_channel
+                            OR :channel LIKE $concat
+                        )
+                        ORDER BY 
+                            CASE 
+                                WHEN channel = :channel THEN 1 
+                                WHEN channel LIKE :like_channel THEN 2 
+                                ELSE 3 
+                            END, 
+                            LENGTH(channel) DESC
+                        LIMIT 1
+                    ");
+                    $stmt->execute([
+                        ':date' => date('Y-m-d'), 
+                        ':channel' => $channelName, 
+                        ':like_channel' => $channelName . '%'
+                    ]);
+                    return $stmt->fetchColumn();
+                }
+            
+                $fileTmpPath = $_FILES['m3utxtFile']['tmp_name'];
+                $fileContent = file_get_contents($fileTmpPath);
+                $epgUrl = $serverUrl . dirname($_SERVER['SCRIPT_NAME']) . "/t.xml.gz";
+                $newFileContent = "#EXTM3U x-tvg-url=\"{$epgUrl}\"\n";
+                $lines = explode("\n", $fileContent);
+                $groupTitle = '';
+            
+                foreach ($lines as $line) {
+                    $line = trim($line);
+
+                    if (strpos($line, '#EXTM3U') === 0) {
+                        $line = preg_replace('/x-tvg-url="[^"]+"/', 'x-tvg-url="' . $epgUrl . '"', $line);
+                        $newFileContent = "$line" . (strpos($line, 'x-tvg-url=') === false ? ' x-tvg-url="' . $epgUrl . '"' : '') . "\n";
+                        continue;
+                    }
+            
+                    if (strpos($line, '#EXTINF') !== false) {
+                        if (preg_match('/#EXTINF:-1(.*),(.+)/', $line, $matches)) {
+                            $channelInfo = $matches[1]; // 提取 tvg-id, tvg-name 等信息
+                            $originalChannelName = trim($matches[2]); // 提取频道名称
+
+                            // 尝试从数据库中匹配频道
+                            $cleanChName = cleanChannelName($originalChannelName);
+                            $channelName = dbChNameMatch($cleanChName) ?: $originalChannelName;
+                            $tvgId = $tvgName = $channelName;
+            
+                            // 从 EXTINF 提取额外信息
+                            if (preg_match('/tvg-id="([^"]+)"/', $channelInfo, $tvgIdMatch)) {
+                                $tvgId = $tvgName = $tvgIdMatch[1];
+                            }
+                            if (preg_match('/tvg-name="([^"]+)"/', $channelInfo, $tvgNameMatch)) {
+                                $tvgId = $tvgName = $tvgNameMatch[1];
+                            }
+                            if (preg_match('/group-title="([^"]+)"/', $channelInfo, $groupTitleMatch)) {
+                                $groupTitle = $groupTitleMatch[1];
+                            }
+            
+                            // 模糊匹配台标
+                            $iconUrl = iconUrlMatch($channelName);
+                            $newFileContent .= "#EXTINF:-1,tvg-id=\"$tvgId\" tvg-name=\"$tvgName\"" .
+                                                (!empty($iconUrl) ? " tvg-logo=\"$iconUrl\"" : "") .
+                                                (!empty($groupTitle) ? " group-title=\"$groupTitle\"" : "") .
+                                                ",$originalChannelName\n";
+                        }
+                    } elseif (filter_var($line, FILTER_VALIDATE_URL)) {
+                        $newFileContent .= "$line\n";
+                    } else {
+                        // 处理 TXT 格式
+                        $parts = explode(',', $line);
+                        if (count($parts) == 2) {
+                            if ($parts[1] === '#genre#') {
+                                $groupTitle = trim($parts[0]); // 更新 group-title
+                            } else {
+                                $originalChannelName = trim($parts[0]);
+                                $cleanChName = cleanChannelName($originalChannelName);
+                                $channelName = dbChNameMatch($cleanChName) ?: $originalChannelName;
+                                $streamUrl = $parts[1];
+            
+                                if (filter_var($streamUrl, FILTER_VALIDATE_URL)) {
+                                    // 模糊匹配台标
+                                    $iconUrl = iconUrlMatch($channelName);
+                                    $newFileContent .= "#EXTINF:-1,tvg-id=\"$channelName\" tvg-name=\"$channelName\"" .
+                                                        (!empty($iconUrl) ? " tvg-logo=\"$iconUrl\"" : "") .
+                                                        (!empty($groupTitle) ? " group-title=\"$groupTitle\"" : "") .
+                                                        ",$originalChannelName\n";
+                                    $newFileContent .= "$streamUrl\n";
+                                }
+                            }
+                        }
+                    }
+                }
+            
+                echo $newFileContent;
+                exit;
         }
     }
 } catch (Exception $e) {
@@ -573,8 +708,9 @@ try {
     <h2>管理配置</h2>
     <form method="POST" id="settingsForm">
 
-        <label for="xml_urls">【EPG源地址】（支持 xml 跟 .xml.gz 格式， # 为注释）</label><span id="channelbind" onclick="showModal('channelbindepg')" style="color: blue; cursor: pointer;">（频道指定EPG源）</span><br><br>
-        <textarea placeholder="一行一个，地址前面加 # 可以临时停用，后面加 # 可以备注。快捷键： Ctrl+/  。" id="xml_urls" name="xml_urls" style="height: 122px;"><?php echo implode("\n", array_map('trim', $Config['xml_urls'])); ?></textarea><br><br>
+        <label for="xml_urls">【EPG源地址】（支持 xml 跟 .xml.gz 格式， # 为注释，支持获取 猫 数据）</label><span id="channelbind" onclick="showModal('channelbindepg')" style="color: blue; cursor: pointer;">（频道指定EPG源）</span><br><br>
+        <textarea placeholder="一行一个，地址前面加 # 可以临时停用，后面加 # 可以备注。快捷键： Ctrl+/  。
+猫示例：tvmao, 广东卫视, 珠江频道" id="xml_urls" name="xml_urls" style="height: 122px;"><?php echo implode("\n", array_map('trim', $Config['xml_urls'])); ?></textarea><br><br>
 
         <div class="form-row">
             <label for="days_to_keep" class="label-days-to-keep">数据保存天数</label>
@@ -710,12 +846,21 @@ try {
         <div style="display: flex;">
             <input type="text" id="iconSearchInput" placeholder="搜索频道名..." onkeyup="filterChannels('icon')" style="flex: 1; margin-right: 10px;">
             <div class="tooltip" style="width:auto; margin-right: 10px;">
-                <button id="showAllIcons" type="button" onclick="showModal('allicon')">显示所有台标</button>
-                <span class="tooltiptext">同时显示无节目表的内置台标</span>
+                <input type="file" name="m3utxtFile" id="m3utxtFile" style="display: none;" accept=".m3u, .txt">
+                <button id="m3uMatchIcons" type="button" onclick="document.getElementById('m3utxtFile').click()">M3U</button>
+                <span class="tooltiptext">上传 m3u/txt 文件<br>匹配 EPG 及台标</span>
+            </div>
+            <div class="tooltip" style="width:auto; margin-right: 10px;">
+                <button id="deleteUnusedIcons" type="button" onclick="deleteUnusedIcons()">清理</button>
+                <span class="tooltiptext">清理未在列表中<br>使用的台标文件</span>
+            </div>
+            <div class="tooltip" style="width:auto; margin-right: 10px;">
+                <button id="showAllIcons" type="button" onclick="showModal('allicon')">全显</button>
+                <span class="tooltiptext">同时显示<br>无节目表内置台标</span>
             </div>
             <div class="tooltip" style="width:auto;">
-                <button id="uploadAllIcons" type="button" onclick="uploadAllIcons();">转存列表台标</button>
-                <span class="tooltiptext">将远程台标转存到服务器</span>
+                <button id="uploadAllIcons" type="button" onclick="uploadAllIcons();">转存</button>
+                <span class="tooltiptext">将远程台标<br>转存到服务器</span>
             </div>
         </div>
         <div class="table-container" id="icon-table-container">
@@ -883,7 +1028,7 @@ try {
         document.cookie.split(";").forEach(function(cookie) {
             var name = cookie.split("=")[0].trim();
             document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
-        });        
+        });
         // 清除本地存储
         sessionStorage.clear();
         // 重定向到登录页面
@@ -1216,7 +1361,7 @@ try {
             });
 
             // 上传文件
-            row.querySelector(`#icon_new_${itemIndex}`).addEventListener('change', event => handleFileUpload(event, item, row, allData));
+            row.querySelector(`#icon_new_${itemIndex}`).addEventListener('change', event => handleIconFileUpload(event, item, row, allData));
 
             // 如果指定了插入位置，则插入到该行之后，否则追加到表格末尾
             if (insertAfterRow) {
@@ -1245,7 +1390,7 @@ try {
                     });
                 } else if (type === 'icon' && searchText) {
                     row.innerHTML = `
-                        <td>${item.channel}</td>
+                        <td contenteditable="true">${item.channel}</td>
                         <td contenteditable="true">${item.icon || ''}</td>
                         <td>${item.icon ? `<a href="${item.icon}" target="_blank"><img src="${item.icon}" style="max-width: 80px; max-height: 50px; background-color: #ccc;"></a>` : ''}</td>
                         <td>
@@ -1253,11 +1398,14 @@ try {
                             <button onclick="document.getElementById('file_${index}').click()" style="font-size: 14px; width: 50px;">上传</button>
                         </td>
                     `;
-                    row.querySelector('td[contenteditable]').addEventListener('input', function() {
-                        item.icon = this.textContent.trim();
-                        document.getElementById(tableId).dataset[dataAttr] = JSON.stringify(allData);
+                    row.querySelectorAll('td[contenteditable]').forEach((cell, idx) => {
+                        cell.addEventListener('input', function() {
+                            if (idx === 0) item.channel = this.textContent.trim();  // 第一个可编辑单元格更新 channel
+                            else item.icon = this.textContent.trim();  // 第二个可编辑单元格更新 icon
+                            document.getElementById(tableId).dataset[dataAttr] = JSON.stringify(allData);
+                        });
                     });
-                    row.querySelector(`#file_${index}`).addEventListener('change', event => handleFileUpload(event, item, row, allData));
+                    row.querySelector(`#file_${index}`).addEventListener('change', event => handleIconFileUpload(event, item, row, allData));
                 }
                 tableBody.appendChild(row);
             }
@@ -1265,7 +1413,7 @@ try {
     }
 
     // 台标上传
-    function handleFileUpload(event, item, row, allData) {
+    function handleIconFileUpload(event, item, row, allData) {
         const file = event.target.files[0];
         if (file && file.type === 'image/png') {
             const formData = new FormData();
@@ -1371,6 +1519,60 @@ try {
             }
         });
     }
+
+    // 清理未使用的台标文件
+    function deleteUnusedIcons() {
+        fetch('manage.php?delete_unused_icons=true')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+            } else {
+                alert('清理失败');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    }
+
+    // 上传 m3u/txt 文件匹配台标
+    document.getElementById('m3utxtFile').addEventListener('change', function() {
+        const file = this.files[0];
+        const allowedExtensions = ['m3u', 'txt'];
+        const fileExtension = file.name.split('.').pop().toLowerCase();
+
+        // 检查文件类型
+        if (!allowedExtensions.includes(fileExtension)) {
+            alert('只接受 .m3u 和 .txt 文件');
+            return;
+        }
+
+        // 创建 FormData 并发送 AJAX 请求
+        const formData = new FormData();
+        formData.append('m3utxtFile', file);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', 'manage.php', true);
+        xhr.responseType = 'blob';
+
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                // 创建下载链接并自动触发下载
+                const url = window.URL.createObjectURL(xhr.response);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'tv.m3u'; // 生成文件名
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            } else {
+                alert('文件处理失败');
+            }
+        };
+
+        xhr.send(formData);
+    });
 
     // 更新频道别名
     function updateChannelMapping() {
