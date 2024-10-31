@@ -20,9 +20,13 @@ define('TIME_FORMAT', "[y-m-d H:i:s]");
 
 // 删除过期数据和日志
 function deleteOldData($db, $keep_days, &$log_messages) {
+    global $Config;
+
     // 删除 t.xml 和 t.xml.gz 文件
-    @unlink('./t.xml');
-    @unlink('./t.xml.gz');
+    if (!$Config['gen_xml']) {
+        @unlink('./t.xml');
+        @unlink('./t.xml.gz');
+    }
 
     // 循环清理过期数据
     $threshold_date = date('Y-m-d', strtotime("-$keep_days days + 1 day"));
@@ -345,9 +349,9 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list) {
     
         if ($channelName && !isset($processedRecords[$recordKey])) {
             $programmeData = [
-                'title' => (string)$programme->title,
                 'start' => $start['time'],
                 'end' => $start['date'] === $end['date'] ? $end['time'] : '00:00',
+                'title' => (string)$programme->title,
                 'desc' => isset($programme->desc) && (string)$programme->desc !== (string)$programme->title ? (string)$programme->desc : ''
             ];
     
@@ -356,9 +360,9 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list) {
             // 保存跨天的节目数据
             if ($start['date'] !== $end['date'] && $end['time'] !== '00:00') {
                 $crossDayProgrammes[$channelId][$end['date']][] = [
-                    'title' => $programmeData['title'],
                     'start' => '00:00',
                     'end' => $end['time'],
+                    'title' => $programmeData['title'],
                     'desc' => $programmeData['desc']
                 ];
             }
@@ -413,9 +417,9 @@ foreach ($Config['xml_urls'] as $xml_url) {
     } elseif (strpos($xml_url, 'tvmao') === 0) {
         // 更新 tvmao 数据
         $tvmaostr = str_replace('tvmao,', '', $xml_url);
-        foreach (explode(',', $tvmaostr) as $channel_name) {
-            $channel_name = trim($channel_name);
-            $json_url = "https://sp0.baidu.com/8aQDcjqpAAV3otqbppnN2DJv/api.php?query=" . $channel_name . "&resource_id=12520&format=json";
+        foreach (explode(',', $tvmaostr) as $tvmao_info) {
+            list($channel_name, $channel_id) = array_map('trim', explode(':', trim($tvmao_info)) + [null, $tvmao_info]);
+            $json_url = "https://sp0.baidu.com/8aQDcjqpAAV3otqbppnN2DJv/api.php?query=" . $channel_id . "&resource_id=12520&format=json";
             downloadJSONData($json_url, $db, $log_messages, $channel_name);
         }
         continue;
