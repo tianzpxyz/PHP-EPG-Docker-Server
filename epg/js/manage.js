@@ -135,51 +135,71 @@ if (importMessage) {
     displayModal(importMessage);
 }
 
-function showModal(type, $popup = true) {
+function showModal(type, $popup = true, $data = '') {
     var modal, logSpan, logContent;
     switch (type) {
+        case 'epg':
+            modal = document.getElementById("epgModal");
+            logSpan = document.getElementsByClassName("close")[1];
+            fetchData("manage.php?get_epg_by_channel=true&channel=" + encodeURIComponent($data.channel) + "&date=" + $data.date, updateEpgContent);
+
+            // 更新日期的点击事件
+            const updateDate = function(offset) {
+                const currentDate = new Date(document.getElementById("epgDate").innerText);
+                currentDate.setDate(currentDate.getDate() + offset);
+                const newDateString = currentDate.toISOString().split('T')[0];
+                fetchData(`manage.php?get_epg_by_channel=true&channel=${encodeURIComponent($data.channel)}&date=${newDateString}`, updateEpgContent);
+                document.getElementById("epgDate").innerText = newDateString;
+            };
+
+            // 前一天和后一天的点击事件
+            document.getElementById('prevDate').onclick = () => updateDate(-1);
+            document.getElementById('nextDate').onclick = () => updateDate(1);
+
+            document.getElementById("channelModal").style.display = "none";
+            break;
+
         case 'update':
             modal = document.getElementById("updatelogModal");
-            logSpan = document.getElementsByClassName("close")[1];
+            logSpan = document.getElementsByClassName("close")[2];
             fetchData('manage.php?get_update_logs=true', updateLogTable);
             break;
         case 'cron':
             modal = document.getElementById("cronlogModal");
-            logSpan = document.getElementsByClassName("close")[2];
+            logSpan = document.getElementsByClassName("close")[3];
             fetchData('manage.php?get_cron_logs=true', updateCronLogContent);
             break;
         case 'channel':
             modal = document.getElementById("channelModal");
-            logSpan = document.getElementsByClassName("close")[3];
+            logSpan = document.getElementsByClassName("close")[4];
             fetchData('manage.php?get_channel=true', updateChannelList);
             break;
         case 'icon':
             modal = document.getElementById("iconModal");
-            logSpan = document.getElementsByClassName("close")[4];
+            logSpan = document.getElementsByClassName("close")[5];
             fetchData('manage.php?get_icon=true', updateIconList);
             break;
         case 'allicon':
             modal = document.getElementById("iconModal");
-            logSpan = document.getElementsByClassName("close")[4];
+            logSpan = document.getElementsByClassName("close")[5];
             fetchData('manage.php?get_icon=true&get_all_icon=true', updateIconList);
             break;
         case 'channelbindepg':
             modal = document.getElementById("channelBindEPGModal");
-            logSpan = document.getElementsByClassName("close")[5];
+            logSpan = document.getElementsByClassName("close")[6];
             fetchData('manage.php?get_channel_bind_epg=true', updateChannelBindEPGList);
             break;
         case 'channelmatch':
             modal = document.getElementById("channelMatchModal");
-            logSpan = document.getElementsByClassName("close")[6];
+            logSpan = document.getElementsByClassName("close")[7];
             fetchData('manage.php?get_channel_match=true', updateChannelMatchList);
             document.getElementById("moreSettingModal").style.display = "none";
             break;
-        case 'moresetting':
-            // 设置 MySQL 相关输入框状态
-            updateMySQLFields();
+        case 'moresetting':            
+            updateMySQLFields(); // 设置 MySQL 相关输入框状态
             document.getElementById('db_type').addEventListener('change', updateMySQLFields);
             modal = document.getElementById("moreSettingModal");
-            logSpan = document.getElementsByClassName("close")[7];
+            logSpan = document.getElementsByClassName("close")[8];
             fetchData('manage.php?get_gen_list=true', updateGenList);
             break;
         default:
@@ -190,18 +210,20 @@ function showModal(type, $popup = true) {
         return;
     }
     modal.style.display = "block";
-    logSpan.onclick = function() {
+
+    function handleModalClose() {
         modal.style.display = "none";
         if (type === 'channelmatch') {
             showModal('moresetting');
+        } else if (type === 'epg') {
+            showModal('channel');
         }
     }
+    
+    logSpan.onclick = handleModalClose;
     window.onmousedown = function(event) {
         if (event.target === modal) {
-            modal.style.display = "none";
-            if (type === 'channelmatch') {
-                showModal('moresetting');
-            }
+            handleModalClose();
         }
     }
 }
@@ -214,6 +236,14 @@ function fetchData(endpoint, callback) {
             console.error('Error fetching log:', error);
             callback([]);
         });
+}
+
+function updateEpgContent(epgData) {
+    document.getElementById('epgTitle').innerHTML = epgData.channel;
+    document.getElementById('epgDate').innerHTML = epgData.date;
+    var epgContent = document.getElementById("epgContent");
+    epgContent.value = epgData.epg;
+    epgContent.scrollTop = 0;
 }
 
 function updateLogTable(logData) {
@@ -380,7 +410,10 @@ function filterChannels(type) {
         if (String(searchText).toUpperCase().includes(input)) {
             const row = document.createElement('tr');
             if (type === 'channel') {
-                row.innerHTML = `<td>${item.original}</td><td contenteditable="true">${item.mapped || ''}</td>`;
+                row.innerHTML = `<td style="color: blue; cursor: pointer;" 
+                                    onclick="showModal('epg', true, { channel: '${item.original}', date: '${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' })}' })">
+                                    ${item.original} </td>
+                                <td contenteditable="true">${item.mapped || ''}</td>`;
                 row.querySelector('td[contenteditable]').addEventListener('input', function() {
                     item.mapped = this.textContent.trim();
                     document.getElementById(tableId).dataset[dataAttr] = JSON.stringify(allData);
@@ -428,7 +461,8 @@ function handleIconFileUpload(event, item, row, allData) {
                             <img src="${iconUrl}?${new Date().getTime()}" style="max-width: 80px; max-height: 50px; background-color: #ccc;">
                         </a>
                     `;
-                    document.getElementById('iconTable').dataset.allIcons = JSON.stringify(allData);
+                    document.getElementById('iconTable').dataset.allIcons = JSON.stringify(allData);                    
+                    updateIconListJsonFile();
                 } else {
                     alert('上传失败：' + data.message);
                 }
@@ -512,7 +546,8 @@ function uploadAllIcons() {
             uploadAllIcons(); // 继续上传
         }
         else {
-            progressDisplay.textContent = "全部转存成功，点击“保存配置”！";
+            progressDisplay.textContent = "全部转存成功，已保存！";
+            updateIconListJsonFile();
         }
     });
 }
@@ -631,7 +666,7 @@ async function parseSource() {
             } else {
                 chName = line.split(',')[0].trim();
             }
-            if (chName) channels.add(chName);
+            if (chName) channels.add(chName.toUpperCase());
         }
     });
 
@@ -644,21 +679,7 @@ async function parseSource() {
 
 // 保存数据并更新配置
 function saveAndUpdateConfig($doUpdate = true) {
-    var iconTableElement = document.getElementById('iconTable');
-    var allIcons = iconTableElement && iconTableElement.dataset.allIcons ? JSON.parse(iconTableElement.dataset.allIcons) : null;
-    if(allIcons) {
-        fetch('manage.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                update_icon_list: true,
-                updatedIcons: JSON.stringify(allIcons) // 传递更新后的图标数据
-            })
-        });
-    }
-
+    updateIconListJsonFile();
     const textAreaContent = document.getElementById('gen_list_text').value;
     fetch('manage.php?set_gen_list=true', {
         method: 'POST',
@@ -682,9 +703,27 @@ function saveAndUpdateConfig($doUpdate = true) {
     });
 }
 
+// 更新 iconList.json
+function updateIconListJsonFile(){
+    var iconTableElement = document.getElementById('iconTable');
+    var allIcons = iconTableElement && iconTableElement.dataset.allIcons ? JSON.parse(iconTableElement.dataset.allIcons) : null;
+    if(allIcons) {
+        fetch('manage.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                update_icon_list: true,
+                updatedIcons: JSON.stringify(allIcons) // 传递更新后的图标数据
+            })
+        });
+    }
+}
+
 // 在提交表单时，将更多设置中的数据包括在表单数据中
 document.getElementById('settingsForm').addEventListener('submit', function() {
-    const fields = ['gen_xml', 'include_future_only', 'ret_default', 'tvmao_default', 'gen_list_enable', 
+    const fields = ['gen_xml', 'include_future_only', 'ret_default', 'tvmao_default', 'all_chs', 'gen_list_enable', 
                     'cache_time', 'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password'];
     fields.forEach(function(field) {
         const hiddenInput = document.createElement('input');

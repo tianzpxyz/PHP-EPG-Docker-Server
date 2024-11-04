@@ -20,6 +20,15 @@ session_start();
 $configUpdated = isset($_SESSION['configUpdated']) && $_SESSION['configUpdated'];
 if ($configUpdated) {
     unset($_SESSION['configUpdated']);
+} else {
+    // 首次进入界面，检查 cron.php 是否运行正常
+    if($Config['interval_time']!=0) {
+        $output = [];
+        exec("ps aux | grep '[c]ron.php'", $output);
+        if(!$output) {
+            exec('php cron.php > /dev/null 2>/dev/null &');
+        }
+    }
 }
 
 if (isset($_SESSION['import_message'])) {
@@ -159,6 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update'])) {
     $include_future_only = isset($_POST['include_future_only']) ? intval($_POST['include_future_only']) : $Config['include_future_only'];
     $ret_default = isset($_POST['ret_default']) ? intval($_POST['ret_default']) : $Config['ret_default'];
     $tvmao_default = isset($_POST['tvmao_default']) ? intval($_POST['tvmao_default']) : $Config['tvmao_default'];
+    $all_chs = isset($_POST['all_chs']) ? intval($_POST['all_chs']) : $Config['all_chs'];
     $gen_list_enable = isset($_POST['gen_list_enable']) ? intval($_POST['gen_list_enable']) : $Config['gen_list_enable'];
     $cache_time = intval($_POST['cache_time']) * 3600;
     $db_type = isset($_POST['db_type']) ? $_POST['db_type'] : $Config['db_type'];
@@ -207,6 +217,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update'])) {
         'include_future_only' => $include_future_only,
         'ret_default' => $ret_default,
         'tvmao_default' => $tvmao_default,
+        'all_chs' => $all_chs,
         'gen_list_enable' => $gen_list_enable,
         'cache_time' => $cache_time,
         'db_type' => $db_type,
@@ -235,14 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update'])) {
     header('Location: manage.php');
     exit;
 } else {
-    // 首次进入界面，检查 cron.php 是否运行正常
-    if($Config['interval_time']!=0) {
-        $output = [];
-        exec("ps aux | grep '[c]ron.php'", $output);
-        if(!$output) {
-            exec('php cron.php > /dev/null 2>/dev/null &');
-        }
-    }
+
 }
 
 // 连接数据库并获取日志表中的数据
@@ -264,6 +268,8 @@ try {
             $action = 'get_cron_logs';
         } elseif (isset($_GET['get_channel'])) {
             $action = 'get_channel';
+        } elseif (isset($_GET['get_epg_by_channel'])) {
+            $action = 'get_epg_by_channel';
         } elseif (isset($_GET['get_icon'])) {
             $action = 'get_icon';
         } elseif (isset($_GET['get_channel_bind_epg'])) {
@@ -316,8 +322,27 @@ try {
                 ];
                 break;
 
+            case 'get_epg_by_channel':
+                // 查询
+                $channel = urldecode($_GET['channel']);
+                $date = urldecode($_GET['date']);
+                $stmt = $db->prepare("SELECT epg_diyp FROM epg_data WHERE channel = :channel AND date = :date");
+                $stmt->execute([':channel' => $channel, ':date' => $date]);
+                $result = $stmt->fetch(PDO::FETCH_ASSOC); // 获取单条结果            
+                if ($result) {
+                    $epgOutput = "";
+                    $epgData = json_decode($result['epg_diyp'], true);                    
+                    foreach ($epgData['epg_data'] as $epgItem) {
+                        $epgOutput .= "{$epgItem['start']} {$epgItem['title']}\n";
+                    }            
+                    $dbResponse = ['channel' => $channel, 'date' => $date, 'epg' => trim($epgOutput)];
+                } else {
+                    $dbResponse = ['channel' => $channel, 'date' => $date, 'epg' => '无节目信息'];
+                }
+                break;
+
             case 'get_icon':
-                // 是否显示无节目表的内置台标
+                // 是否显示无节目单的内置台标
                 if(isset($_GET['get_all_icon'])) {
                     $iconList = $iconListMerged;
                 }
@@ -714,7 +739,8 @@ try {
 
         <label for="xml_urls">【EPG源地址】（支持 xml 跟 .xml.gz 格式， # 为注释，支持获取 猫 数据）</label><span id="channelbind" onclick="showModal('channelbindepg')" style="color: blue; cursor: pointer;">（频道指定EPG源）</span><br><br>
         <textarea placeholder="一行一个，地址前面加 # 可以临时停用，后面加 # 可以备注。快捷键： Ctrl+/  。
-猫示例：tvmao, 猫频道名1, 自定义频道名:猫频道名2, ..." id="xml_urls" name="xml_urls" style="height: 122px;"><?php echo implode("\n", array_map('trim', $Config['xml_urls'])); ?></textarea><br><br>
+猫示例1：tvmao, 猫频道名, ...
+猫示例2：tvmao, 自定义频道名:猫频道名, ..." id="xml_urls" name="xml_urls" style="height: 122px;"><?php echo implode("\n", array_map('trim', $Config['xml_urls'])); ?></textarea><br><br>
 
         <div class="form-row">
             <label for="days_to_keep" class="label-days-to-keep">数据保存天数</label>
@@ -754,7 +780,7 @@ try {
         <div class="flex-container">
             <div class="flex-item" style="width: 100%;">
                 <label>
-                    【频道别名】（数据库频道名 => 频道别名1, 频道别名2, ...）<span id="dbChannelName" onclick="showModal('channel')" style="color: blue; cursor: pointer;">（编辑别名）</span><span id="dbChannelName" onclick="showModal('icon')" style="color: blue; cursor: pointer;">（编辑台标）</span>
+                    【频道别名】（数据库频道名 => 频道别名1, 频道别名2, ...）<span id="dbChannelName" onclick="showModal('channel')" style="color: blue; cursor: pointer;">（频道信息）</span><span id="dbChannelName" onclick="showModal('icon')" style="color: blue; cursor: pointer;">（台标信息）</span>
                 </label><br><br>
                 <textarea id="channel_mappings" name="channel_mappings" style="height: 142px;"><?php echo implode("\n", array_map(function($search, $replace) { return $search . ' => ' . $replace; }, array_keys($Config['channel_mappings']), $Config['channel_mappings'])); ?></textarea><br><br>
             </div>
@@ -785,6 +811,19 @@ try {
     <div class="modal-content config-modal-content">
         <span class="close">&times;</span>
         <p id="modalMessage"></p>
+    </div>
+</div>
+
+<!-- 频道 EPG 模态框 -->
+<div id="epgModal" class="modal">
+    <div class="modal-content epg-modal-content">
+        <span class="close">&times;</span>
+        <h2 id="epgTitle">频道名</h2>
+        <span id="epgDate">日期</span>
+        <span id="prevDate" style="cursor: pointer; color: blue; margin-left: 10px;">&#9664; 前一天</span>
+        <span id="nextDate" style="cursor: pointer; color: blue; margin-left: 10px;">后一天 &#9654;</span>
+        <br><br>
+        <textarea id="epgContent" readonly style="width: 100%; height: 400px;"></textarea>
     </div>
 </div>
 
@@ -856,11 +895,11 @@ try {
             </div>
             <div class="tooltip" style="width:auto; margin-right: 10px;">
                 <button id="deleteUnusedIcons" type="button" onclick="deleteUnusedIcons()">清理</button>
-                <span class="tooltiptext">清理未在列表中<br>使用的台标文件</span>
+                <span class="tooltiptext">清理未使用<br>服务器台标文件</span>
             </div>
             <div class="tooltip" style="width:auto; margin-right: 10px;">
                 <button id="showAllIcons" type="button" onclick="showModal('allicon')">全显</button>
-                <span class="tooltiptext">同时显示<br>无节目表内置台标</span>
+                <span class="tooltiptext">同时显示<br>无节目单台标</span>
             </div>
             <div class="tooltip" style="width:auto;">
                 <button id="uploadAllIcons" type="button" onclick="uploadAllIcons();">转存</button>
@@ -960,11 +999,22 @@ try {
             <option value="1" <?php if (!isset($Config['ret_default']) || $Config['ret_default'] == 1) echo 'selected'; ?>>是</option>
             <option value="0" <?php if (isset($Config['ret_default']) && $Config['ret_default'] == 0) echo 'selected'; ?>>否</option>
         </select>
-        <label for="tvmao_default" title="尝试使用 猫 接口补充预告数据">补充预告：</label>
-        <select id="tvmao_default" name="tvmao_default" required>
-            <option value="1" <?php if (isset($Config['tvmao_default']) && $Config['tvmao_default'] == 1) echo 'selected'; ?>>是</option>
-            <option value="0" <?php if (!isset($Config['tvmao_default']) || $Config['tvmao_default'] == 0) echo 'selected'; ?>>否</option>
-        </select>
+        <div class="tooltip" style="width:auto;">
+            <label for="tvmao_default" title="">补充预告<span style="vertical-align: super;">*</span>：</label>
+            <select id="tvmao_default" name="tvmao_default" required>
+                <option value="1" <?php if (isset($Config['tvmao_default']) && $Config['tvmao_default'] == 1) echo 'selected'; ?>>是</option>
+                <option value="0" <?php if (!isset($Config['tvmao_default']) || $Config['tvmao_default'] == 0) echo 'selected'; ?>>否</option>
+            </select>
+            <span class="tooltiptext">尝试使用 猫 接口<br>补充预告数据</span>
+        </div>
+        <div class="tooltip" style="width:auto;">
+            <label for="all_chs" title="">全转简中<span style="vertical-align: super;">*</span>：</label>
+            <select id="all_chs" name="all_chs" required>
+                <option value="1" <?php if (isset($Config['all_chs']) && $Config['all_chs'] == 1) echo 'selected'; ?>>是</option>
+                <option value="0" <?php if (!isset($Config['all_chs']) || $Config['all_chs'] == 0) echo 'selected'; ?>>否</option>
+            </select>
+            <span class="tooltiptext">节目单&描述<br>转简体中文</span>
+        </div>
         <br><br>
         <label for="cache_time">缓存时间：</label>
         <select id="cache_time" name="cache_time" required>
