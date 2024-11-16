@@ -7,7 +7,7 @@
  * 并从 SQLite 数据库中提取或返回默认数据。
  *
  * 作者: Tak
- * GitHub: https://github.com/taksssss/PHP-EPG-Docker-Server
+ * GitHub: https://github.com/taksssss/EPG-Server
  */
 
 // 引入公共脚本
@@ -60,14 +60,11 @@ function readEPGData($date, $oriChName, $cleanChName, $db, $type) {
     $cache_time = ($date < date('Y-m-d')) ? 7 * 24 * 3600 : $Config['cache_time'];
 
     // 检查是否开启缓存并安装了 Memcached 类
-    $memcached_enabled = $Config['cache_time'] && class_exists('Memcached');
+    $memcached_enabled = $Config['cache_time'] && class_exists('Memcached')
+        && ($memcached = new Memcached())->addServer('localhost', 11211);
     $cache_key = base64_encode("{$date}_{$cleanChName}_{$type}");
 
     if ($memcached_enabled) {
-        // 初始化 Memcached
-        $memcached = new Memcached();
-        $memcached->addServer('127.0.0.1', 11211); // 请确保 Memcached 服务器地址和端口正确
-
         // 从缓存中读取数据
         $cached_data = $memcached->get($cache_key);
         if ($cached_data) {
@@ -121,9 +118,9 @@ function readEPGData($date, $oriChName, $cleanChName, $db, $type) {
     $rowArray = json_decode($row, true);
     $iconUrl = iconUrlMatch($rowArray['channel_name']) ?? iconUrlMatch($cleanChName) ?? iconUrlMatch($oriChName);
     $rowArray = array_merge(
-        array_slice($rowArray, 0, array_search('url', array_keys($rowArray)) + 1),
+        array_slice($rowArray, 0, array_search('source', array_keys($rowArray)) + 1),
         ['icon' => $iconUrl],
-        array_slice($rowArray, array_search('url', array_keys($rowArray)) + 1)
+        array_slice($rowArray, array_search('source', array_keys($rowArray)) + 1)
     );
     $row = json_encode($rowArray, JSON_UNESCAPED_UNICODE);
 
@@ -163,6 +160,7 @@ function readEPGData($date, $oriChName, $cleanChName, $db, $type) {
                 'liveSt' => $current_programme ? $current_programme['st'] : 0,
                 'channelName' => $diyp_data['channel_name'],
                 'lvUrl' => $diyp_data['url'],
+                'srcUrl' => $diyp_data['source'],
                 'icon' => $diyp_data['icon'],
                 'program' => $program
             ]
@@ -181,14 +179,9 @@ function readEPGData($date, $oriChName, $cleanChName, $db, $type) {
     return false;
 }
 
-// 获取当前时间戳
-function getNowTimestamp() {
-    return time();
-}
-
 // 查找当前节目
 function findCurrentProgramme($programmes) {
-    $now = getNowTimestamp();
+    $now = time();
     foreach ($programmes as $programme) {
         if ($programme['st'] <= $now && $programme['et'] >= $now) {
             return $programme;
@@ -199,12 +192,39 @@ function findCurrentProgramme($programmes) {
 
 // 处理请求
 function fetchHandler() {
-    global $init, $db, $Config;
+    global $init, $db, $Config, $liveDir, $serverUrl;
 
     $uri = parse_url($_SERVER['REQUEST_URI']);
     $query_params = [];
     if (isset($uri['query'])) {
         parse_str($uri['query'], $query_params);
+    }
+
+    // 处理直播源请求
+    if (isset($query_params['live'])) {
+        if ($query_params['token'] === $Config['live_token']) {
+            header('Content-Type: text/plain');
+            $filePath = ($query_params['live'] === 'txt') ? $liveDir . 'tv.txt' : 
+                        ($query_params['live'] === 'm3u' ? $liveDir . 'tv.m3u' : null);
+        
+            if ($filePath && file_exists($filePath)) {
+                // 如果是 m3u 类型，替换 tvg-url
+                if ($query_params['live'] === 'm3u') {
+                    $content = file_get_contents($filePath);
+                    $tvgUrl = $serverUrl . dirname($_SERVER['SCRIPT_NAME']) . '/t.xml.gz';
+                    $content = preg_replace('/(#EXTM3U x-tvg-url=")(.*?)(")/', '$1' . $tvgUrl . '$3', $content);
+                    echo $content;
+                } else {
+                    // 直接输出 txt 内容
+                    echo file_get_contents($filePath);
+                }
+            } else {
+                echo "文件不存在或无效的 live 类型";
+            }
+        } else {
+            echo "无效的 token";
+        }
+        exit;
     }
 
     // 获取并清理频道名称，繁体转换成简体
@@ -244,7 +264,7 @@ function fetchHandler() {
 
         // 频道在列表中但无当天数据，尝试通过 tvmao 接口获取数据
         $retry = $response && !processResponse($response, $oriChName, $date, $type, $init);
-        if ($retry && $Config['tvmao_default'] === 1 && $date > date('Y-m-d')) {
+        if ($retry && $Config['tvmao_default'] === 1 && $date >= date('Y-m-d')) {
             $matchChannelName = json_decode($response, true)['channel_name'] ?? $oriChName;
             $json_url = "https://sp0.baidu.com/8aQDcjqpAAV3otqbppnN2DJv/api.php?query=$matchChannelName&resource_id=12520&format=json";
             downloadJSONData($json_url, $db, $log_messages, $matchChannelName, $replaceFlag = false); // 只更新无数据的日期
@@ -254,13 +274,13 @@ function fetchHandler() {
 
         // 返回默认数据
         $ret_default = !isset($Config['ret_default']) || $Config['ret_default'];
-        $iconUrl = iconUrlMatch($cleanChName);
+        $iconUrl = iconUrlMatch($cleanChName) ?? iconUrlMatch($oriChName);
         if ($type === 'diyp') {
             // 无法获取到数据时返回默认 diyp 数据
             $default_diyp_program_info = [
                 'channel_name' => $cleanChName,
                 'date' => $date,
-                'url' => "https://github.com/taksssss/PHP-EPG-Docker-Server",
+                'url' => "https://github.com/taksssss/EPG-Server",
                 'icon' => $iconUrl,
                 'epg_data' => !$ret_default ? '' : array_map(function($hour) {
                     return [
@@ -279,7 +299,7 @@ function fetchHandler() {
                     'isLive' => '',
                     'liveSt' => 0,
                     'channelName' => $cleanChName,
-                    'lvUrl' => 'https://github.com/taksssss/PHP-EPG-Docker-Server',
+                    'lvUrl' => 'https://github.com/taksssss/EPG-Server',
                     'icon' => $iconUrl,
                     'program' => !$ret_default ? '' : array_map(function($hour) {
                         return [
