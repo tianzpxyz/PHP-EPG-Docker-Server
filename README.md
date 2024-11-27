@@ -1,9 +1,14 @@
+> [!IMPORTANT]  
+> **访问路径**从 `http://{服务器IP地址}:5678/epg/` 修改为 `http://{服务器IP地址}:5678/`（兼容旧路径）
+> 
+> **映射路径**从 `-v ./data:/htdocs/epg/data` 修改为 `-v ./data:/htdocs/data`
+
 ![EPG-Server](https://socialify.git.ci/taksssss/EPG-Server/image?description=1&descriptionEditable=Docker%F0%9F%90%B3%E9%83%A8%E7%BD%B2%EF%BC%8C%E5%B8%A6%E8%AE%BE%E7%BD%AE%E7%95%8C%E9%9D%A2%E3%80%81%E5%8F%B0%E6%A0%87%E7%AE%A1%E7%90%86%EF%BC%8C%E6%94%AF%E6%8C%81DIYP%E3%80%81%E8%B6%85%E7%BA%A7%E7%9B%B4%E6%92%AD%E5%8F%8Axmltv%E3%80%82&font=Inter&forks=1&issues=1&language=1&owner=1&pattern=Circuit%20Board&pulls=1&stargazers=1&theme=Auto)
 
 # 📺 EPG-Server
 ![Docker Pulls](https://img.shields.io/docker/pulls/taksss/php-epg) ![Image Size](https://img.shields.io/docker/image-size/taksss/php-epg)
 
-PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带设置界面、台标管理，支持 **DIYP & 百川** 、 **超级直播** 以及 **xmltv** 格式。
+PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带设置界面、台标管理、直播源管理，支持 **DIYP & 百川** 、 **超级直播** 以及 **xmltv** 格式。
 
 ## 💻 主要功能
 
@@ -35,8 +40,6 @@ PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带�
 
 > [!TIP]
 > `xmltv` 用户搭配 [【一键生成】匹配 M3U 文件的 XML 节目单](https://www.right.com.cn/forum/thread-8392662-1-1.html) 使用。
-> 
-> ⚠️ 项目访问路径从 `http://{服务器IP地址}:5678/epg/` 修改为 `http://{服务器IP地址}:5678/`
 
 ![设置页面](/pic/management.png)
 
