@@ -11,13 +11,14 @@
 
 // 禁用 PHP 输出缓冲
 ob_implicit_flush(true);
-ob_end_flush();
+@ob_end_flush();
 
 // 设置 header，防止浏览器缓存输出
 header('X-Accel-Buffering: no');
 
 // 显示 favicon
 echo '<link rel="icon" href="assets/html/favicon.ico" type="image/x-icon">';
+echo '<title>更新数据</title>';
 
 // 引入公共脚本
 require_once 'public.php';
@@ -31,8 +32,10 @@ function deleteOldData($db, $keep_days, &$log_messages) {
 
     // 删除 t.xml 和 t.xml.gz 文件
     if (!$Config['gen_xml']) {
-        @unlink('./t.xml');
-        @unlink('./t.xml.gz');
+        @unlink(__DIR__ . '/t.xml');
+        @unlink(__DIR__ . '/t.xml.gz');
+        @unlink(__DIR__ . '/data/t.xml');
+        @unlink(__DIR__ . '/data/t.xml.gz');
     }
 
     // 循环清理过期数据
@@ -48,7 +51,16 @@ function deleteOldData($db, $keep_days, &$log_messages) {
         $stmt->bindValue(':threshold_date', $threshold_date, PDO::PARAM_STR);
         $stmt->execute();
         logMessage($log_messages, "【{$logMessage}】 共 {$stmt->rowCount()} 条。");
-    }    
+    }
+    
+    // 清理 memcached 数据
+    if (class_exists('Memcached') && ($memcached = new Memcached())->addServer('localhost', 11211)) {
+        $memcached->flush();
+        logMessage($log_messages, "【Memcached】 已清空。");
+    } else {
+        logMessage($log_messages, "【Memcached】 状态异常。");
+    }
+
     echo "<br>";
 }
 
@@ -123,7 +135,7 @@ function getChannelBindEPG() {
 }
 
 // 下载 XML 数据并存入数据库
-function downloadXmlData($xml_url, $db, &$log_messages, $gen_list, $gen_list_enable) {
+function downloadXmlData($xml_url, $db, &$log_messages, $gen_list) {
     global $Config;
     $xml_data = downloadData($xml_url);
     if ($xml_data !== false && stripos($xml_data, 'not found') === false) {
@@ -145,7 +157,7 @@ function downloadXmlData($xml_url, $db, &$log_messages, $gen_list, $gen_list_ena
         if (isset($Config['all_chs']) && $Config['all_chs']) { $xml_data = t2s($xml_data); }
         $db->beginTransaction();
         try {
-            $processCount = processXmlData($xml_url, $xml_data, $db, $gen_list, $gen_list_enable);
+            $processCount = processXmlData($xml_url, $xml_data, $db, $gen_list);
             $db->commit();
             logMessage($log_messages, "【更新】 成功：共 {$processCount} 条");
         } catch (Exception $e) {
@@ -159,7 +171,7 @@ function downloadXmlData($xml_url, $db, &$log_messages, $gen_list, $gen_list_ena
 }
 
 // 处理 XML 数据并逐步存入数据库
-function processXmlData($xml_url, $xml_data, $db, $gen_list, $gen_list_enable) {
+function processXmlData($xml_url, $xml_data, $db, $gen_list) {
     global $Config;
     global $processedRecords;
     global $channel_bind_epg;
@@ -198,7 +210,7 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $gen_list_enable) {
         }
 
         // 当 gen_list_enable 为 0 时，插入所有数据
-        if (!$gen_list_enable) {
+        if (empty($Config['gen_list_enable'])) {
             $channelNamesMap[$channelId] = $channelNameSimplified;
             continue;
         }
@@ -286,20 +298,52 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $gen_list_enable) {
     return $processCount;
 }
 
-// 从 epg_data 表生成 XML 数据并逐个频道写入 t.xml 文件
-function generateXmlFromEpgData($db, $include_future_only, $gen_list_mapping, &$log_messages) {
-    global $Config, $iconList;
+// 从 epg_data 读取数据，生成 iconList.json 及 xmltv 文件
+function processIconListAndXMLTV($db, $gen_list_mapping, &$log_messages) {
+    global $Config, $iconList, $iconListPath;
 
     $currentDate = date('Y-m-d'); // 获取当前日期
-    $dateCondition = $include_future_only ? "WHERE date >= '$currentDate'" : '';
+    $dateCondition = $Config['include_future_only'] ? "WHERE date >= '$currentDate'" : '';
 
     // 合并查询
     $query = "SELECT date, channel, epg_diyp FROM epg_data $dateCondition ORDER BY channel ASC, date ASC";
     $stmt = $db->query($query);
 
+
+    // 存储节目数据以按频道分组
+    $channelData = [];
+
+    while ($program = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $channelName = $program['channel'];
+        $iconUrl = iconUrlMatch($channelName, $getDefault = false);
+
+        if ($iconUrl) {
+            $iconList[strtoupper($channelName)] = $iconUrl;
+            $program['icon'] = $iconUrl;
+        }
+
+        // gen_list_enable 为 0 或存在映射，则处理频道数据
+        if (empty($Config['gen_list_enable']) || isset($gen_list_mapping[$channelName])) {
+            $channelData[$channelName][] = $program;
+        }
+    }
+    
+    // 更新 iconList.json 文件中的数据
+    if (file_put_contents($iconListPath, json_encode($iconList, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) === false) {
+        logMessage($log_messages, "【台标列表】 更新 iconList.json 时发生错误！！！");
+    } else {
+        logMessage($log_messages, "【台标列表】 已更新 iconList.json");
+    }
+
+    // 判断是否生成 xmltv 文件
+    if (empty($Config['gen_xml'])) {
+        return;
+    }
+    
     // 创建 XMLWriter 实例
+    $xmlFilePath = __DIR__ . '/data/t.xml';
     $xmlWriter = new XMLWriter();
-    $xmlWriter->openUri('t.xml');
+    $xmlWriter->openUri($xmlFilePath);
     $xmlWriter->startDocument('1.0', 'UTF-8');
     $xmlWriter->startElement('tv');
     $xmlWriter->writeAttribute('generator-info-name', 'Tak');
@@ -307,39 +351,22 @@ function generateXmlFromEpgData($db, $include_future_only, $gen_list_mapping, &$
     $xmlWriter->setIndent(true);
     $xmlWriter->setIndentString('	'); // 设置缩进
 
-    // 存储节目数据以按频道分组
-    $channelData = [];
-
-    while ($program = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $originalChannel = $program['channel'];
-
-        // 确定要处理的频道列表
-        $channelsToProcess = $Config['gen_list_enable']
-            ? ($gen_list_mapping[$originalChannel] ?? [])
-            : array_unique(array_merge([$originalChannel], $gen_list_mapping[$originalChannel] ?? []));
-
-        // 如果不需要生成列表或映射为空或存在映射，则处理频道数据
-        if (empty($Config['gen_list_enable']) || empty($gen_list_mapping) || isset($gen_list_mapping[$originalChannel])) {
-            $channelData[$originalChannel][] = $program;
-        }
-    }
-
     // 将 $Config['channel_mappings'] 中的映射值转换为数组
     $channelMappings = array_map(function($mapped) {
         return strpos($mapped, 'regex:') === 0 ? [$mapped] : array_map('trim', explode(',', $mapped));
     }, $Config['channel_mappings']);
 
     // 逐个频道处理
-    foreach ($channelData as $originalChannel => $programs) {
+    foreach ($channelData as $channelName => $programs) {
         // 写入频道信息
         $xmlWriter->startElement('channel');
-        $xmlWriter->writeAttribute('id', htmlspecialchars($originalChannel, ENT_XML1, 'UTF-8'));
+        $xmlWriter->writeAttribute('id', htmlspecialchars($channelName, ENT_XML1, 'UTF-8'));
 
         // 为该频道生成多个 display-name ，包括原频道名、限定频道列表、频道别名
         $displayNames = array_unique(array_merge(
-            [$originalChannel],
-            $gen_list_mapping[$originalChannel] ?? [],
-            $channelMappings[$originalChannel] ?? []
+            [$channelName],
+            $gen_list_mapping[$channelName] ?? [],
+            $channelMappings[$channelName] ?? []
         ));
         foreach ($displayNames as $displayName) {
             $xmlWriter->startElement('display-name');
@@ -348,16 +375,14 @@ function generateXmlFromEpgData($db, $include_future_only, $gen_list_mapping, &$
             $xmlWriter->endElement(); // display-name
         }
 
-        $iconUrl = iconUrlMatch($originalChannel, $getDefault = false);
+        $iconUrl = $programs[0]['icon'] ?? '';
 
         if ($iconUrl) {
-            $iconList[strtoupper($originalChannel)] = $iconUrl;
+            $xmlWriter->startElement('icon');
+            $xmlWriter->writeAttribute('src', $iconUrl);
+            $xmlWriter->endElement(); // icon
         }
         
-        $xmlWriter->startElement('icon');
-        $xmlWriter->writeAttribute('src', $iconUrl);
-        $xmlWriter->endElement(); // icon
-
         $xmlWriter->endElement(); // channel
 
         // 写入该频道的所有节目数据
@@ -389,7 +414,7 @@ function generateXmlFromEpgData($db, $include_future_only, $gen_list_mapping, &$
         
                 // 写入当前节目
                 $xmlWriter->startElement('programme');
-                $xmlWriter->writeAttribute('channel', htmlspecialchars($originalChannel, ENT_XML1, 'UTF-8'));
+                $xmlWriter->writeAttribute('channel', htmlspecialchars($channelName, ENT_XML1, 'UTF-8'));
                 $xmlWriter->writeAttribute('start', formatTime($program['date'], $item['start']));
                 $xmlWriter->writeAttribute('stop', formatTime($end_date, $end_time));
                 $xmlWriter->startElement('title');
@@ -413,15 +438,23 @@ function generateXmlFromEpgData($db, $include_future_only, $gen_list_mapping, &$
     $xmlWriter->flush();
 
     // 所有频道数据写入完成后，生成 t.xml.gz 文件
-    compressXmlFile('t.xml');
+    compressXmlFile($xmlFilePath);
+    
+    // 建立 xmltv 软链接
+    if (!file_exists($xmlLinkPath = __DIR__ . '/t.xml')) {
+        symlink($xmlFilePath, $xmlLinkPath);
+        symlink($xmlFilePath . '.gz', $xmlLinkPath . '.gz');
+    }
+
+    logMessage($log_messages, "【预告文件】 已生成 t.xml、t.xml.gz");
 }
 
 // 生成 t.xml.gz 压缩文件
-function compressXmlFile($filePath) {
-    $gzFilePath = $filePath . '.gz';
+function compressXmlFile($xmlFilePath) {
+    $gzFilePath = $xmlFilePath . '.gz';
 
     // 打开原文件和压缩文件
-    $file = fopen($filePath, 'rb');
+    $file = fopen($xmlFilePath, 'rb');
     $gzFile = gzopen($gzFilePath, 'wb9'); // 最高压缩等级
 
     // 将文件内容写入到压缩文件中
@@ -481,22 +514,12 @@ foreach ($Config['xml_urls'] as $xml_url) {
         logMessage($log_messages, "【临时】 限定频道：" . implode(", ", $tmp_gen_list));
         downloadXmlData($cleaned_url, $db, $log_messages, $tmp_gen_list, 1);
     } else {
-        downloadXmlData($cleaned_url, $db, $log_messages, $gen_list, !empty($Config['gen_list_enable']));
+        downloadXmlData($cleaned_url, $db, $log_messages, $gen_list);
     }
 }
 
-// 判断是否生成 xmltv 文件
-if ($Config['gen_xml']) {
-    generateXmlFromEpgData($db, $Config['include_future_only'], $gen_list_mapping, $log_messages);
-    logMessage($log_messages, "【预告文件】 已生成 t.xml、t.xml.gz");
-}
-
-// 更新 iconList.json 文件中的数据
-if (file_put_contents($iconListPath, json_encode($iconList, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) === false) {
-    logMessage($log_messages, "【台标列表】 更新 iconList.json 时发生错误！！！");
-} else {
-    logMessage($log_messages, "【台标列表】 已更新 iconList.json");
-}
+// 更新 iconList.json 及生成 xmltv 文件
+processIconListAndXMLTV($db, $gen_list_mapping, $log_messages);
 
 // 判断是否同步更新直播源
 if (isset($Config['live_source_auto_sync']) && $Config['live_source_auto_sync'] == 1) {

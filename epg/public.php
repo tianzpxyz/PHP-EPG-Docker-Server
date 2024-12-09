@@ -27,8 +27,15 @@ $Config = json_decode(file_get_contents($configPath), true) or die("配置文件
 // 获取 serverUrl
 $protocol = ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? (($_SERVER['HTTPS'] ?? '') === 'on' ? 'https' : 'http'));
 $host = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '';
-$uri = rtrim(dirname($_SERVER['HTTP_X_ORIGINAL_URI'] ?? $_SERVER['REQUEST_URI']) ?? '', '/');
+$uri = rtrim(dirname($_SERVER['HTTP_X_ORIGINAL_URI'] ?? @$_SERVER['REQUEST_URI']) ?? '', '/');
 $serverUrl = $protocol . '://' . $host . $uri;
+
+// 建立 xmltv 软链接
+if ($Config['gen_xml'] && file_exists($xmlFilePath = __DIR__ . '/data/t.xml')
+    && !file_exists($xmlLinkPath = __DIR__ . '/t.xml')) {
+    symlink($xmlFilePath, $xmlLinkPath);
+    symlink($xmlFilePath . '.gz', $xmlLinkPath . '.gz');
+}
 
 // 设置时区为亚洲/上海
 date_default_timezone_set("Asia/Shanghai");

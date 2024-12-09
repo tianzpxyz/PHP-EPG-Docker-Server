@@ -11,7 +11,7 @@ document.getElementById('settingsForm').addEventListener('submit', function(even
     event.preventDefault();  // 阻止默认表单提交
 
     const fields = ['update_config', 'gen_xml', 'include_future_only', 'ret_default', 'tvmao_default', 
-        'all_chs', 'cache_time', 'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 
+        'all_chs', 'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 
         'gen_list_enable', 'check_update', 'token_range'];
 
     // 创建隐藏字段并将其添加到表单
@@ -34,18 +34,14 @@ document.getElementById('settingsForm').addEventListener('submit', function(even
     })
     .then(response => response.json())
     .then(data => {
-        const { memcached_set, db_type_set, interval_time, start_time, end_time } = data;
+        const { db_type_set, interval_time, start_time, end_time } = data;
         
-        let message = '配置已更新<br><br>';    
-        if (!memcached_set) {
-            message += 'Memcached 启用失败<br>缓存时间已设为 0<br><br>';
-            document.getElementById('cache_time').value = 0;
-        }
+        let message = '配置已更新<br><br>';
         if (!db_type_set) {
             message += 'MySQL 启用失败<br>数据库已设为 SQLite<br><br>';
             document.getElementById('db_type').value = 'sqlite';
             updateMySQLFields();
-        }    
+        }
         message += interval_time === 0 
             ? "已取消定时任务" 
             : `已设置定时任务<br>开始时间：${start_time}<br>结束时间：${end_time}<br>间隔周期：${formatTime(interval_time)}`;
@@ -443,7 +439,7 @@ function displayPage(data, page) {
     const end = Math.min(start + rowsPerPage, data.length);
 
     if (data.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="8">暂无数据</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="9">暂无数据</td></tr>';
         return;
     }
 
@@ -453,25 +449,27 @@ function displayPage(data, page) {
     // 填充当前页的表格数据
     data.slice(start, end).forEach((item, index) => {
         const row = document.createElement('tr');
+        
         row.innerHTML = `
             <td>${start + index + 1}</td>
             ${columns.map((col, columnIndex) => {
                 let cellContent = item[col] || '';
-                let cellStyle = '';
-            
+                let cellClass = '';
+                
                 // 处理 disable 和 modified 列
                 if (col === 'disable' || col === 'modified') {
                     cellContent = item[col] == 1 ? '是' : '否';
-                    cellStyle = (col === 'disable' && item[col] == 1) 
-                        ? 'font-weight: bold; color: red; background-color: #FFFFE0; cursor: pointer; user-select: none;' 
+                    cellClass = (col === 'disable' && item[col] == 1) 
+                        ? 'table-cell-disable' 
                         : (col === 'modified' && item[col] == 1) 
-                        ? 'font-weight: bold; color: red; background-color: #DEFAFF; cursor: pointer; user-select: none;' 
-                        : 'cursor: pointer; user-select: none;';
+                        ? 'table-cell-modified' 
+                        : 'table-cell-clickable';
                 }
+
                 const editable = (col === 'disable' || col === 'modified') ? '' : 'contenteditable="true"';
-                const clickableClass = (col === 'disable' || col === 'modified') ? 'clickable' : '';
-            
-                return `<td ${editable} class="${clickableClass}" style="${cellStyle}">
+                const clickableClass = (col === 'disable' || col === 'modified') ? 'table-cell-clickable' : '';
+
+                return `<td ${editable} class="${clickableClass} ${cellClass}">
                             ${cellContent}
                         </td>`;
             }).join('')}
@@ -487,13 +485,13 @@ function displayPage(data, page) {
                     allLiveData[dataIndex]['modified'] = 1; // 标记修改位
                     const lastCell = cell.closest('tr').lastElementChild;
                     lastCell.textContent = '是';
-                    lastCell.style = 'font-weight: bold; color: red; background-color: #DEFAFF; cursor: pointer; user-select: none;';
+                    lastCell.classList.add('table-cell-modified');
                 }
             });
         });
-    
+
         // 为 disable 和 modified 列添加点击事件，切换 "是/否"
-        row.querySelectorAll('td.clickable').forEach((cell, columnIndex) => {
+        row.querySelectorAll('td.table-cell-clickable').forEach((cell, columnIndex) => {
             cell.addEventListener('click', () => {
                 const dataIndex = (currentPage - 1) * rowsPerPage + index;
                 if (dataIndex < allLiveData.length) {
@@ -502,15 +500,15 @@ function displayPage(data, page) {
                     const newValue = allLiveData[dataIndex][field] == 1 ? 0 : 1;
                     allLiveData[dataIndex][field] = newValue;
                     cell.textContent = newValue == 1 ? '是' : '否';
-                    cell.style.fontWeight = newValue == 1 ? 'bold' : 'normal';
-                    cell.style.color = newValue == 1 ? 'red' : 'black';
-                    cell.style.backgroundColor = newValue == 1 ? (isDisable ? '#FFFFE0' : '#DEFAFF') : '';
-            
-                    if(isDisable) {
+
+                    if (isDisable) {
+                        cell.classList.toggle('table-cell-disable', newValue == 1);
                         allLiveData[dataIndex]['modified'] = 1; // 标记修改位
                         const lastCell = cell.closest('tr').lastElementChild;
                         lastCell.textContent = '是';
-                        lastCell.style = 'font-weight: bold; color: red; background-color: #DEFAFF; cursor: pointer; user-select: none;';
+                        lastCell.classList.add('table-cell-modified');
+                    } else {
+                        cell.classList.toggle('table-cell-modified', newValue == 1);
                     }
                 }
             });
@@ -684,8 +682,8 @@ function copyText(text) {
     document.body.removeChild(input);
     const fileName = text.includes('live=txt') ? 'tv.txt' : text.includes('live=m3u') ? 'tv.m3u' : 'file.txt';
     showMessageModal(`${text}<br>地址已复制，可直接粘贴。&ensp;
-        <a href="${text}" target="_blank" style="color: blue; text-decoration: none;">查看&ensp;</a>
-        <a href="${text}" download="${fileName}" style="color: blue; text-decoration: none;">下载</a>`);
+        <a href="${text}" class="blue-span" target="_blank">查看</a>&ensp;
+        <a href="${text}" class="blue-span" download="${fileName}">下载</a>`);
 }
 
 // 搜索频道
@@ -746,7 +744,7 @@ function filterChannels(type) {
         if (String(searchText).toUpperCase().includes(input)) {
             const row = document.createElement('tr');
             if (type === 'channel') {
-                row.innerHTML = `<td style="color: blue; cursor: pointer;" 
+                row.innerHTML = `<td class="blue-span" 
                                     onclick="showModal('epg', true, { channel: '${item.original}', date: '${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' })}' })">
                                     ${item.original} </td>
                                 <td contenteditable="true">${item.mapped || ''}</td>`;
@@ -1120,15 +1118,51 @@ function showTokenRangeMessage(token, serverUrl) {
     var message = '';
     var baseUrl = serverUrl + '/?token=' + token;
     if (tokenRange == "1" || tokenRange == "3") {
-        message += '直播源地址：<br><a href="' + baseUrl + '&live=m3u" target="_blank">' + baseUrl + '&live=m3u</a><br>' + 
-                   '<a href="' + baseUrl + '&live=txt" target="_blank">' + baseUrl + '&live=txt</a>';
+        message += `直播源地址：<br><a href="${baseUrl}&live=m3u" target="_blank">${baseUrl}&live=m3u</a><br>
+                    <a href="${baseUrl}&live=txt" target="_blank">${baseUrl}&live=txt</a>`;
     }
     if (tokenRange == "2" || tokenRange == "3") {
         if (message) message += '<br>';
-        message += 'EPG地址：<br><a href="' + baseUrl + '" target="_blank">' + baseUrl + '</a>';
+        message += `EPG地址：<br><a href="${baseUrl}" target="_blank">${baseUrl}</a>`;
     }
     if (message) {
         showMessageModal('');
         document.getElementById('messageModalMessage').innerHTML = `<div style="text-align: left">${message}</div>`;
     }
 }
+
+// 切换主题
+document.getElementById('themeSwitcher').addEventListener('click', function() {
+    // 获取当前主题，并切换到下一个主题
+    const currentTheme = localStorage.getItem('theme');
+    const newTheme = currentTheme === 'light' ? 'dark' : (currentTheme === 'dark' ? '' : 'light');
+    
+    // 更新主题
+    document.body.classList.add('theme-transition');
+    document.body.classList.remove('dark', 'light');
+
+    if (newTheme === '') {
+        const prefersDarkScheme = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.body.classList.add(prefersDarkScheme ? 'dark' : 'light');
+    } else {
+        document.body.classList.add(newTheme);
+    }
+
+    // 更新图标和文字
+    document.getElementById("themeIcon");
+    const labelText = document.querySelector('.label-text');
+    themeIcon.className = `fas ${newTheme === 'dark' ? 'fa-moon' : newTheme === 'light' ? 'fa-sun' : 'fa-adjust'}`;
+    labelText.textContent = newTheme === 'dark' ? 'Dark' : newTheme === 'light' ? 'Light' : 'Auto';
+    
+    // 保存到本地存储
+    localStorage.setItem('theme', newTheme);
+});
+
+// 监听系统主题变化
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+    if(!localStorage.getItem('theme')) {
+        const theme = e.matches ? 'dark' : 'light';
+        document.body.classList.remove('dark', 'light');
+        document.body.classList.add(theme);
+    }
+});
