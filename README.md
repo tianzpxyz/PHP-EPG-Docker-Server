@@ -56,7 +56,7 @@ PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带�
 > **内置正则表达式说明：**
 > - 包含 `regex:`
 > - 示例：
->   - `CCTV$1 => regex:/^CCTV[-\s]*(\d+(\s*P(LUS)?|[K\+])?)(?![\s-]*(美洲|欧洲)).*/i` ：将 `CCTV 1综合`、`CCTV-4K频道`、`CCTV - 5+频道`、`CCTV - 5PLUS频道` 等替换成 `CCTV1`、`CCTV4K`、`CCTV5+`、`CCTV5PLUS`（排除 `CCTV4美洲` 和 `CCTV4欧洲`）
+>   - `CCTV$1 => regex:/^CCTV[-\s]*(\d{1,2}(\s*P(LUS)?|[K\+])?)(?![\s-]*(美洲|欧洲)).*/i` ：将 `CCTV 1综合`、`CCTV-4K频道`、`CCTV - 5+频道`、`CCTV - 5PLUS频道` 等替换成 `CCTV1`、`CCTV4K`、`CCTV5+`、`CCTV5PLUS`（排除 `CCTV4美洲` 和 `CCTV4欧洲`）
 
 ## 📝 更新日志
 
@@ -184,6 +184,23 @@ PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带�
 >
 > - `Ctrl + S`：保存设置
 > - `Ctrl + /`：对选中 EPG 地址设置（取消）注释
+
+## ☕ Buy Me a Coffee
+
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="/pic/buymeacofee-dark.png"
+  />
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="/pic/buymeacofee.png"
+  />
+  <img
+    alt="Buy Me a Coffee"
+    src="/pic/buymeacofee.png"
+  />
+</picture>
 
 ## ⭐ Star History
 
