@@ -10,9 +10,10 @@ document.addEventListener('DOMContentLoaded', function() {
 document.getElementById('settingsForm').addEventListener('submit', function(event) {
     event.preventDefault();  // 阻止默认表单提交
 
-    const fields = ['update_config', 'gen_xml', 'include_future_only', 'ret_default', 'tvmao_default', 
-        'all_chs', 'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 
-        'gen_list_enable', 'check_update', 'token_range'];
+    const fields = ['update_config', 'gen_xml', 'include_future_only', 'ret_default', 'all_chs', 
+        'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 'gen_list_enable', 
+        'check_update', 'token_range', 'user_agent_range', 'live_template_enable', 'live_fuzzy_match', 
+        'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 'live_tvg_name_enable'];
 
     // 创建隐藏字段并将其添加到表单
     const form = this;
@@ -646,11 +647,20 @@ document.getElementById('sourceUrlTextarea').addEventListener('blur', function()
 
 // 保存编辑后的直播源信息
 function saveLiveSourceInfo() {
+    // 获取 checkbox 配置
+    const liveTvgLogoEnable = document.getElementById('live_tvg_logo_enable').value;
+    const liveTvgIdEnable = document.getElementById('live_tvg_id_enable').value;
+    const liveTvgNameEnable = document.getElementById('live_tvg_name_enable').value;
+
+    // 保存直播源信息
     fetch('manage.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
             save_source_info: 'true',
+            live_tvg_logo_enable: liveTvgLogoEnable,
+            live_tvg_id_enable: liveTvgIdEnable,
+            live_tvg_name_enable: liveTvgNameEnable,
             content: JSON.stringify(allLiveData)
         })
     })
@@ -661,7 +671,7 @@ function saveLiveSourceInfo() {
 
 // 清理未使用的直播源文件
 function cleanUnusedSource() {
-    fetch('manage.php?delete_unused_source=true')
+    fetch('manage.php?delete_unused_live_data=true')
     .then(response => response.json())
     .then(data => {
         if (data.success) {
@@ -675,34 +685,17 @@ function cleanUnusedSource() {
     });
 }
 
-// 显示直播源信息
-function showLiveInfo(token, serverUrl) {
-    var m3uUrl = `${serverUrl}/?token=${token}&live=m3u`;
-    var txtUrl = `${serverUrl}/?token=${token}&live=txt`;
+// 显示直播源地址
+function showLiveUrl(token, serverUrl, tokenRange) {
+    var tokenStr = (tokenRange == 1 || tokenRange == 3) ? `token=${token}&` : '';
+    var m3uUrl = `${serverUrl}/index.php?${tokenStr}live=m3u`;
+    var txtUrl = `${serverUrl}/index.php?${tokenStr}live=txt`;
     message = `M3U：<br><a href="${m3uUrl}" target="_blank">${m3uUrl}</a>
                 &ensp;<a href="${m3uUrl}" download="tv.m3u">下载</a><br>
                 TXT：<br><a href="${txtUrl}" target="_blank">${txtUrl}</a>
                 &ensp;&ensp;<a href="${txtUrl}" download="tv.txt">下载</a><br>
-                转换：<br>${m3uUrl}/txt&url=xxx`;
+                转换：<br>${m3uUrl}&url=xxx<br>${txtUrl}&url=xxx`;
     showMessageModal(message);
-}
-
-// 显示 token 范围信息
-function showTokenRangeMessage(token, serverUrl) {
-    var tokenRange = document.getElementById("token_range").value;
-    var message = '';
-    var baseUrl = serverUrl + '/?token=' + token;
-    if (tokenRange == "1" || tokenRange == "3") {
-        message += `直播源地址：<br><a href="${baseUrl}&live=m3u" target="_blank">${baseUrl}&live=m3u</a><br>
-                    <a href="${baseUrl}&live=txt" target="_blank">${baseUrl}&live=txt</a>`;
-    }
-    if (tokenRange == "2" || tokenRange == "3") {
-        if (message) message += '<br>';
-        message += `EPG地址：<br><a href="${baseUrl}" target="_blank">${baseUrl}</a>`;
-    }
-    if (message) {
-        showMessageModal(message);
-    }
 }
 
 // 显示直播源模板
@@ -712,8 +705,23 @@ function showLiveTemplate() {
 
 // 保存编辑后的直播源模板
 function saveLiveTemplate() {
-    liveTemplateContent = document.getElementById('liveTemplateTextarea').value;
+    // 保存配置
+    liveTemplateEnable = document.getElementById('live_template_enable').value;
+    liveFuzzyMatch = document.getElementById('live_fuzzy_match').value;
+    liveUrlComment = document.getElementById('live_url_comment').value;
+    fetch('manage.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            update_config_field: 'true',
+            live_template_enable: liveTemplateEnable,
+            live_fuzzy_match: liveFuzzyMatch,
+            live_url_comment: liveUrlComment
+        })
+    });
+
     // 内容写入 template.txt 文件
+    liveTemplateContent = document.getElementById('liveTemplateTextarea').value;
     fetch('manage.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -807,7 +815,7 @@ function filterChannels(type) {
                 row.innerHTML = `
                     <td contenteditable="true">${item.channel}</td>
                     <td contenteditable="true">${item.icon || ''}</td>
-                    <td>${item.icon ? `<a href="${item.icon}" target="_blank"><img src="${item.icon}" style="max-width: 80px; max-height: 50px; background-color: #ccc;"></a>` : ''}</td>
+                    <td>${item.icon ? `<a href="${item.icon}" target="_blank"><img loading="lazy" src="${item.icon}" style="max-width: 80px; max-height: 50px; background-color: #ccc;"></a>` : ''}</td>
                     <td>
                         <input type="file" accept="image/png" style="display:none;" id="file_${index}">
                         <button onclick="document.getElementById('file_${index}').click()" style="font-size: 14px; width: 50px;">上传</button>
@@ -843,7 +851,7 @@ function handleIconFileUpload(event, item, row, allData) {
                     item.icon = iconUrl;
                     row.cells[2].innerHTML = `
                         <a href="${iconUrl}?${new Date().getTime()}" target="_blank">
-                            <img src="${iconUrl}?${new Date().getTime()}" style="max-width: 80px; max-height: 50px; background-color: #ccc;">
+                            <img loading="lazy" src="${iconUrl}?${new Date().getTime()}" style="max-width: 80px; max-height: 50px; background-color: #ccc;">
                         </a>
                     `;
                     document.getElementById('iconTable').dataset.allIcons = JSON.stringify(allData);
@@ -908,7 +916,7 @@ function uploadAllIcons() {
                     iconCell.innerText = iconUrl;
                     previewCell.innerHTML = `
                         <a href="${iconUrl}?${Date.now()}" target="_blank">
-                            <img src="${iconUrl}?${Date.now()}" style="max-width: 80px; max-height: 50px; background-color: #ccc;">
+                            <img loading="lazy" src="${iconUrl}?${Date.now()}" style="max-width: 80px; max-height: 50px; background-color: #ccc;">
                         </a>
                     `;
 
@@ -1126,36 +1134,43 @@ document.getElementById('importFile').addEventListener('change', function() {
     this.value = ''; // 重置文件输入框的值，确保可以连续上传相同文件
 });
 
-// 修改 token 对话框
-function changeToken(currentToken) {
+// 修改 token、user_agent 对话框
+function changeTokenUA(type, currentTokenUA) {
     showMessageModal('');
+    typeStr = type === 'token' ? 'Token' : 'User-Agent<br>支持多个，逗号分隔';
     document.getElementById('messageModalMessage').innerHTML = `
-        <div style="width: 180px; height: 125px;">
-            <h3>修改 token</h3>
-            <input type="text" value="${currentToken}" id="newToken" style="text-align: center; font-size: 15px; margin-bottom: 15px;" />
-            <button onclick="updateToken()">确认</button>
+        <div style="width: 180px;">
+            <h3>修改 ${typeStr}</h3>
+            <input type="text" value="${currentTokenUA}" id="newTokenUA" style="text-align: center; font-size: 15px; margin-bottom: 15px;" />
+            <button onclick="updateTokenUA('${type}')" style="margin-bottom: -10px;">确认</button>
         </div>
     `;
 }
 
-// 更新 token 到 config.json
-function updateToken() {
-    var newToken = document.getElementById('newToken').value;
+// 更新 token、user_agent 到 config.json
+function updateTokenUA(type) {
+    var newTokenUA = document.getElementById('newTokenUA').value.replace(/，/g, ","); // 将中文逗号替换为英文逗号
 
     // 内容写入 config.json 文件
     fetch('manage.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-            save_token: 'true',
-            content: newToken
+            update_config_field: 'true',
+            [type.toLowerCase()]: newTokenUA
         })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('修改成功');
-            window.location.href = 'manage.php';
+            if (type.toLowerCase() == 'token' || newTokenUA == '') {
+                alert('修改成功');
+                window.location.href = 'manage.php';
+            }
+            else {
+                showMessageModal('修改成功');
+                document.getElementById('change_ua_span').setAttribute('onclick', `changeTokenUA('user_agent', '${newTokenUA}')`);
+            }
         } else {
             showMessageModal('修改失败');
         }
@@ -1167,7 +1182,7 @@ function updateToken() {
 function showTokenRangeMessage(token, serverUrl) {
     var tokenRange = document.getElementById("token_range").value;
     var message = '';
-    var baseUrl = serverUrl + '/?token=' + token;
+    var baseUrl = serverUrl + '/index.php?token=' + token;
     if (tokenRange == "1" || tokenRange == "3") {
         message += `直播源地址：<br><a href="${baseUrl}&live=m3u" target="_blank">${baseUrl}&live=m3u</a><br>
                     <a href="${baseUrl}&live=txt" target="_blank">${baseUrl}&live=txt</a>`;
@@ -1179,6 +1194,7 @@ function showTokenRangeMessage(token, serverUrl) {
     if (message) {
         showMessageModal(message);
     }
+    document.getElementById('showLiveUrlBtn').setAttribute('onclick', `showLiveUrl('${token}', '${serverUrl}', '${tokenRange}')`);
 }
 
 // 切换主题
