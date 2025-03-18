@@ -27,8 +27,8 @@ $Config = json_decode(file_get_contents($configPath), true) or die("配置文件
 // 获取 serverUrl
 $protocol = ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? (($_SERVER['HTTPS'] ?? '') === 'on' ? 'https' : 'http'));
 $host = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '';
-$uri = rtrim(strtok(dirname($_SERVER['HTTP_X_ORIGINAL_URI'] ?? @$_SERVER['REQUEST_URI']) ?? '', '?'), '/');
-$serverUrl = $protocol . '://' . $host . $uri;
+$scriptDir = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/');
+$serverUrl = $protocol . '://' . $host . $scriptDir;
 
 // 建立 xmltv 软链接
 if ($Config['gen_xml'] && file_exists($xmlFilePath = __DIR__ . '/data/t.xml')
@@ -127,12 +127,13 @@ function t2s($channel) {
 }
 
 // 台标模糊匹配
-function iconUrlMatch($originalChannel, $getDefault = true) {
-    global $Config, $iconListMerged;
+function iconUrlMatch($originalChannel, $getDefault = true, $getFullUrl = true) {
+    global $Config, $iconListDefault, $iconListMerged, $serverUrl;
 
     // 精确匹配
     if (isset($iconListMerged[$originalChannel])) {
-        return $iconListMerged[$originalChannel];
+        $finalIconUrl = $iconListMerged[$originalChannel];
+        return $getFullUrl && stripos($finalIconUrl, '/data/icon/') === 0 ?  $serverUrl . $finalIconUrl : $finalIconUrl;
     }
 
     $bestMatch = null;
@@ -148,9 +149,9 @@ function iconUrlMatch($originalChannel, $getDefault = true) {
         }
     }
 
-    // 反向模糊匹配（列表中的频道名包含在原始频道名中）
+    // 反向模糊匹配（列表中的频道名包含在原始频道名中，仅默认列表）
     if (!$iconUrl) {
-        foreach ($iconListMerged as $channelName => $icon) {
+        foreach ($iconListDefault as $channelName => $icon) {
             if (stripos($originalChannel, $channelName) !== false) {
                 if ($bestMatch === null || strlen($channelName) > strlen($bestMatch)) {
                     $bestMatch = $channelName;
@@ -161,7 +162,8 @@ function iconUrlMatch($originalChannel, $getDefault = true) {
     }
 
     // 如果没有找到匹配的图标，使用默认图标（如果配置中存在）
-    return $iconUrl ?: ($getDefault && !empty($Config['default_icon']) ? $Config['default_icon'] : null);
+    $finalIconUrl = $iconUrl ?: ($getDefault ? ($Config['default_icon'] ?? null) : null);
+    return $getFullUrl && stripos($finalIconUrl, '/data/icon/') === 0 ?  $serverUrl . $finalIconUrl : $finalIconUrl;
 }
 
 // 下载文件
@@ -468,13 +470,19 @@ function doParseSourceInfo($urlLine = null) {
                 // 跳过空行和 M3U 头部
                 if (empty($urlContentLine) || strpos($urlContentLine, '#EXTM3U') === 0) continue;
     
-                if (strpos($urlContentLine, '#EXTINF') === 0 && isset($urlContentLines[$i + 1])) {
-                    // 处理 `#EXTINF` 行，提取频道信息
+                if (strpos($urlContentLine, '#EXTINF') === 0 && isset($urlContentLines[$i + 1]) && 
+                    strpos($urlContentLines[$i + 1], '#EXTINF') !== 0) {
+                    // 处理 #EXTINF 行，提取频道信息
                     if (preg_match('/#EXTINF:-?\d+(.*),(.+)/', $urlContentLine, $matches)) {
                         $channelInfo = $matches[1];
                         $groupTitle = preg_match('/group-title="([^"]+)"/', $channelInfo, $match) ? trim($match[1]) : '';
                         $originalChannelName = trim($matches[2]);
-                        $streamUrl = trim($urlContentLines[$i + 1]);
+                        $streamUrl = '';
+                        $j = $i + 1;
+                        while (!empty($urlContentLines[$j]) && $urlContentLines[$j][0] === '#') {
+                            $streamUrl .= trim($urlContentLines[$j++]) . '<br>';
+                        }
+                        $streamUrl .= strtok(trim($urlContentLines[$j] ?? ''), '\\');
                         $tag = md5($url . $groupTitle . $originalChannelName . $streamUrl);
 
                         $rowData = [
@@ -550,7 +558,7 @@ function doParseSourceInfo($urlLine = null) {
             $finalChannelName = $dbChannelName ?: $cleanChannelName;
             $row['channelName'] = $liveChannelNameProcess ? $finalChannelName : $row['channelName'];
             $row['chsChannelName'] = $chsChannelName;
-            $row['iconUrl'] = iconUrlMatch($finalChannelName) ?? $row['iconUrl'];
+            $row['iconUrl'] = iconUrlMatch($finalChannelName, true, false) ?? $row['iconUrl'];
             $row['tvgName'] = $dbChannelName ?? $row['tvgName'];
         }
 
@@ -618,11 +626,14 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                     list($groupTitle, $channelName, , $streamUrl, $iconUrl, $tvgId, $tvgName, $disable, , $source) = array_values($row);
 
                     if ((!empty($groupInfo['source']) && !in_array($source, $groupInfo['source'])) || ($templateGroupTitle !== 'default' && 
-                        stripos($groupTitle, $templateGroupTitle) === false && stripos($templateGroupTitle, $groupTitle) === false)) {
+                        (empty($groupTitle) || stripos($groupTitle, $templateGroupTitle) === false && stripos($templateGroupTitle, $groupTitle) === false))) {
                         continue;
                     }
 
                     // 更新信息
+                    $streamParts = explode("<br>", $streamUrl);
+                    $streamUrl = array_pop($streamParts);
+                    $extraInfo = $streamParts ? implode("\n", $streamParts) . "\n" : '';
                     $txtStreamUrl = $streamUrl . (($txtCommentEnabled && strpos($streamUrl, '$') === false) ? "\${$groupTitle}" : "");
                     $m3uStreamUrl = $streamUrl . (($m3uCommentEnabled && strpos($streamUrl, '$') === false) ? "\${$groupTitle}" : "");
                     $rowGroupTitle = $templateGroupTitle === 'default' ? $groupTitle : $templateGroupTitle;
@@ -640,7 +651,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                         " group-title=\"$rowGroupTitle\"," . 
                         "$channelName";
 
-                    $m3uContent .= $extInfLine . "\n" . $m3uStreamUrl . "\n";
+                    $m3uContent .= $extInfLine . "\n" . $extraInfo . $m3uStreamUrl . "\n";
                     $groups[$rowGroupTitle][] = "$channelName,$txtStreamUrl";
                 }
             } else {
@@ -665,9 +676,12 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                         // CGTN 和 CCTV 不进行模糊匹配
                         if ($channelName === $groupChannelName || 
                             ($fuzzyMatchingEnable && ($cleanChsChannelName === $cleanChsGroupChannelName || 
-                            stripos($cleanChsGroupChannelName, 'CGTN') === false && stripos($cleanChsGroupChannelName, 'CCTV') === false &&
+                            stripos($cleanChsGroupChannelName, 'CGTN') === false && stripos($cleanChsGroupChannelName, 'CCTV') === false && !empty($cleanChsChannelName) && 
                             (stripos($cleanChsChannelName, $cleanChsGroupChannelName) !== false || stripos($cleanChsGroupChannelName, $cleanChsChannelName) !== false)))) {
                             // 更新信息
+                            $streamParts = explode("<br>", $streamUrl);
+                            $streamUrl = array_pop($streamParts);
+                            $extraInfo = $streamParts ? implode("\n", $streamParts) . "\n" : '';
                             $txtStreamUrl = $streamUrl . (($txtCommentEnabled && strpos($streamUrl, '$') === false) ? "\${$groupTitle}" : "");
                             $m3uStreamUrl = $streamUrl . (($m3uCommentEnabled && strpos($streamUrl, '$') === false) ? "\${$groupTitle}" : "");
                             $rowGroupTitle = $templateGroupTitle === 'default' ? $groupTitle : $templateGroupTitle;
@@ -686,7 +700,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                                 " group-title=\"$rowGroupTitle\"," . 
                                 "$groupChannelName"; // 使用 $groupChannels 中的名称
 
-                            $m3uContent .= $extInfLine . "\n" . $m3uStreamUrl . "\n";
+                            $m3uContent .= $extInfLine . "\n" . $extraInfo . $m3uStreamUrl . "\n";
                             $groups[$rowGroupTitle][] = "$groupChannelName,$txtStreamUrl";
                         }
                     }
@@ -707,8 +721,11 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                 ($iconUrl && $liveTvgLogoEnable ? " tvg-logo=\"$iconUrl\"" : "") . 
                 ($groupTitle ? " group-title=\"$groupTitle\"" : "") . 
                 ",$channelName";
-    
-            $m3uContent .= $extInfLine . "\n" . $streamUrl . "\n";
+                
+            $streamParts = explode("<br>", $streamUrl);
+            $streamUrl = array_pop($streamParts);
+            $extraInfo = $streamParts ? implode("\n", $streamParts) . "\n" : '';
+            $m3uContent .= $extInfLine . "\n" . $extraInfo . $streamUrl . "\n";
             $groups[$groupTitle ?: "未分组"][] = "$channelName,$streamUrl";
         }
     }
@@ -738,6 +755,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
         fputcsv($modificationsFile, $title); // 写入表头
 
         foreach ($channelData as $row) {
+            unset($row['resolution'], $row['speed']); // 删除 resolution 跟 speed 键
             fputcsv($channelsFile, $row);
 
             // 处理 existingData
