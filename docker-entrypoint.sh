@@ -86,11 +86,11 @@ ln -s /usr/share/zoneinfo/${TZ} /etc/localtime
 
 echo 'Running cron.php and Apache'
 
-# Add write access to /htdocs
-chmod -R o+w /htdocs
+# Change ownership of /htdocs
+chown -R apache:apache /htdocs
 
 # Start cron.php
-cd /htdocs/
+cd /htdocs
 su -s /bin/sh -c "php cron.php &" "apache"
 
 # Remove stale PID file
