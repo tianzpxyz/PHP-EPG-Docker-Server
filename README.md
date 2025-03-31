@@ -85,13 +85,7 @@ PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带�
 
 1. 配置 `Docker` 环境
 
-2. 若已安装过，先删除旧版本并拉取新版本
-
-   ```bash
-   docker rm php-epg -f && docker pull taksss/php-epg:latest
-   ```
-
-3. 拉取镜像并运行：
+2. 拉取镜像并运行：
 
    ```bash
    docker run -d \
@@ -152,6 +146,19 @@ PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带�
  
 </details>
 
+## 🆙 版本升级
+
+一键升级
+```bash
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtower php-epg --cleanup --run-once
+```
+
+自动检测
+```bash
+docker run -d --name php-epg-update -v /var/run/docker.sock:/var/run/docker.sock --restart unless-stopped containrrr/watchtower php-epg --cleanup --interval 3600
+```
+
+
 ## 🛠️ 使用步骤
 
 1. 在浏览器中打开 `http://{服务器IP地址}:5678/manage.php`
@@ -197,6 +204,8 @@ PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带�
   />
 </picture>
 
+[查看捐赠者名单](/DONATIONS.md)
+
 ## ⭐ Star History
 
 <picture>
@@ -223,3 +232,4 @@ PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带�
 - [EPG 51zmt](http://epg.51zmt.top:8000/)
 - [fanmingming/live](https://github.com/fanmingming/live)
 - [wanglindl/TVlogo](https://github.com/wanglindl/TVlogo)
+- [Guovin/iptv-api](https://github.com/Guovin/iptv-api)
