@@ -693,6 +693,11 @@ try {
                 } else {
                     echo json_encode(['success' => true]);
                 }
+
+                // 清理 memcached 数据，避免缓存
+                if (class_exists('Memcached') && ($memcached = new Memcached())->addServer('localhost', 11211)) {
+                    $memcached->flush();
+                }
                 exit;
 
             case 'upload_source_file':
