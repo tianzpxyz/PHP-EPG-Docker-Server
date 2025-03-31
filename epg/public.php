@@ -463,7 +463,7 @@ function doParseSourceInfo($urlLine = null) {
         $urlChannelData = [];
 
         // 处理 M3U 格式的直播源
-        if (strpos($urlContent, '#EXTM3U') !== false) {
+        if (strpos($urlContent, '#EXTM3U') !== false || strpos($urlContent, '#EXTINF') !== false) {
             foreach ($urlContentLines as $i => $urlContentLine) {
                 $urlContentLine = trim($urlContentLine);
     
@@ -774,6 +774,12 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
 
         fclose($channelsFile);
         fclose($modificationsFile);
+
+        // 解析直播源文件时，另存一份用于测速校验
+        if(!$saveOnly) {
+            $channelsOrigFilePath = $liveDir . 'channels_orig.csv';
+            copy($channelsFilePath, $channelsOrigFilePath);
+        }
     }
 }
 ?>
