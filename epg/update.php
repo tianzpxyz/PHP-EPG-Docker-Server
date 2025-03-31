@@ -204,8 +204,8 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
         // 频道指定来源且不为当前 xml_url、或不在白名单、或在黑名单中，直接跳过
         if ((!empty($channel_bind_epg) && isset($channel_bind_epg[$channelNameSimplified]) && 
             !in_array($xml_url, $channel_bind_epg[$channelNameSimplified])) || 
-            (!empty($white_list) && !in_array($channelNameSimplified, $white_list)) || 
-            in_array($channelNameSimplified, $black_list)) {
+            (!empty($white_list) && !in_array($channelNameSimplified, $white_list) && !in_array($channelId, $white_list)) || 
+            (in_array($channelNameSimplified, $black_list) || in_array($channelId, $black_list))) {
             continue;
         }
 
@@ -513,9 +513,9 @@ foreach ($Config['xml_urls'] as $xml_url) {
     $cleaned_url = trim(strpos($xml_url_str, '=>') !== false ? explode('=>', $xml_url_str)[1] : $xml_url_str);
     logMessage($log_messages, "【地址】 $cleaned_url");
 
+    $black_list = $white_list = [];
     // 判断是否有限定频道列表、屏蔽频道列表并下载数据
     if (strpos($xml_url_str, '=>') !== false) {
-        $black_list = $white_list = [];
         if (strpos($xml_url_str, '!') === 0) {
             $black_list = array_map('trim', explode(",", explode('=>', str_replace('!', '', $xml_url_str))[0]));
             logMessage($log_messages, "【临时】 屏蔽频道：" . implode(", ", $black_list));
@@ -523,10 +523,9 @@ foreach ($Config['xml_urls'] as $xml_url) {
             $white_list = array_map('trim', explode(",", explode('=>', $xml_url_str)[0]));
             logMessage($log_messages, "【临时】 限定频道：" . implode(", ", $white_list));
         }
-        downloadXmlData($cleaned_url, $userAgent, $db, $log_messages, $gen_list, $white_list, $black_list);
-    } else {
-        downloadXmlData($cleaned_url, $userAgent, $db, $log_messages, $gen_list);
     }
+        
+    downloadXmlData($cleaned_url, $userAgent, $db, $log_messages, $gen_list, $white_list, $black_list);
 }
 
 // 更新 iconList.json 及生成 xmltv 文件
