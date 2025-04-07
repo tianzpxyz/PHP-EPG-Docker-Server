@@ -101,7 +101,7 @@ function updateConfigFields() {
 
     // 处理 URL 列表和频道别名
     $xml_urls = array_values(array_map(function($url) {
-        return preg_replace('/^#\s*(\S+)(\s*#.*)?$/', '# $1$2', trim(str_replace(["，", "："], [",", ":"], $url)));
+        return preg_replace('/^#\s*(\S+)(\s*#.*)?$/', '# $1$2', trim(str_replace(["，", "：", "！"], [",", ":", "!"], $url)));
     }, explode("\n", $xml_urls)));
     
     $interval_time = $interval_hour * 3600 + $interval_minute * 60;
@@ -513,7 +513,7 @@ try {
                     return;
                 }
 
-                $localFile = 'assets/CHANGELOG.md';
+                $localFile = 'data/CHANGELOG.md';
                 $url = 'https://gitee.com/taksssss/EPG-Server/raw/main/CHANGELOG.md';
                 $isUpdated = false;
                 $updateMessage = '';
@@ -692,6 +692,11 @@ try {
                     echo json_encode(['success' => false, 'message' => '更新 iconList.json 时发生错误']);
                 } else {
                     echo json_encode(['success' => true]);
+                }
+
+                // 清理 memcached 数据，避免缓存
+                if (class_exists('Memcached') && ($memcached = new Memcached())->addServer('localhost', 11211)) {
+                    $memcached->flush();
                 }
                 exit;
 

@@ -21,8 +21,8 @@ if (substr_count($requestUrl, '?') > 1) {
     $requestUrl = preg_replace('/&/', '?', preg_replace('/\?/', '&', $requestUrl), 1);
 }
 
-// 解析 URL 中的查询参数
-parse_str(str_replace('+', '%2B', parse_url($requestUrl, PHP_URL_QUERY)), $query_params);
+// 解析 URL 中的查询参数，特殊处理 5+ 频道
+parse_str(str_replace('5+', '5%2B', parse_url($requestUrl, PHP_URL_QUERY)), $query_params);
 
 // 获取 URL 中的 token 参数并验证
 $tokenRange = $Config['token_range'] ?? 1;
@@ -264,7 +264,7 @@ function liveFetchHandler($query_params) {
 function fetchHandler($query_params) {
     global $init, $db, $Config;
 
-    // 处理直播源请求    
+    // 处理直播源请求
     if (isset($query_params['live'])) {
         liveFetchHandler($query_params);
     }

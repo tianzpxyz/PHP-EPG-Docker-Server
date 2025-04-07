@@ -13,7 +13,9 @@ document.getElementById('settingsForm').addEventListener('submit', function(even
     const fields = ['update_config', 'gen_xml', 'include_future_only', 'ret_default', 'all_chs', 
         'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 'gen_list_enable', 
         'check_update', 'token_range', 'user_agent_range', 'live_template_enable', 'live_fuzzy_match', 
-        'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 'live_tvg_name_enable'];
+        'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 'live_tvg_name_enable', 
+        'check_ipv6', 'min_resolution_width', 'min_resolution_height', 'urls_limit','sort_by_delay', 
+        'check_speed_auto_sync'];
 
     // 创建隐藏字段并将其添加到表单
     const form = this;
@@ -243,6 +245,9 @@ function showModal(type, popup = true, data = '') {
             modal = document.getElementById("liveSourceManageModal");
             fetchData('manage.php?get_live_data=true', updateLiveSourceModal);
             break;
+        case 'chekspeed':
+            modal = document.getElementById("checkSpeedModal");
+            break;
         case 'moresetting':
             updateMySQLFields(); // 设置 MySQL 相关输入框状态
             document.getElementById('db_type').addEventListener('change', updateMySQLFields);
@@ -297,6 +302,8 @@ function showExecResult(fileName, callback, fullSize = true) {
     if (fullSize) {
         wrapper.style.width = '800px';
         wrapper.style.height = '500px';
+    } else {
+        wrapper.style.maxWidth = '600px';
     }
     wrapper.style.overflow = 'auto';
     messageContainer.appendChild(wrapper);
@@ -352,6 +359,7 @@ function showVersionLog(doCheckUpdate = false) {
 
 // 显示使用说明
 function showHelpModal() {
+    fetch("assets/html/readme.html").then(res => res.text()).then(data => helpContent.innerHTML = data);
     showModalWithMessage("helpModal");
 }
 
@@ -673,9 +681,8 @@ function toggleStatus(toggleBtn) {
                  : toggleBtn === "toggleCheckSpeedSyncBtn" ? "同步测速"
                  : toggleBtn === "toggleLiveChannelNameProcessBtn" ? "频道更名" : "Error"}: ${data.status === 1 ? "是" : "否"}`;
             const syncStatus = document.getElementById("toggleLiveSourceSyncBtn").innerHTML;
-            const checkStatus = document.getElementById("toggleCheckSpeedSyncBtn").innerHTML;
             const processStatus = document.getElementById("toggleLiveChannelNameProcessBtn").innerHTML;
-            document.getElementById('showMoreLiveSettingBtn').setAttribute('onclick', `showMoreLiveSetting('${syncStatus}', '${checkStatus}', '${processStatus}')`);
+            document.getElementById('showMoreLiveSettingBtn').setAttribute('onclick', `showMoreLiveSetting('${syncStatus}', '${processStatus}')`);
         })
         .catch(error => console.error("Error:", error));
 }
@@ -704,18 +711,13 @@ function saveLiveSourceFile() {
 document.getElementById('sourceUrlTextarea').addEventListener('blur', saveLiveSourceFile);
 
 // 显示更多直播源设置
-function showMoreLiveSetting(sourceSync, checkSync, nameProcess) {
+function showMoreLiveSetting(sourceSync, nameProcess) {
     showMessageModal('');
     document.getElementById('messageModalMessage').innerHTML = `
-        <div class="button-container" style="width: 380px; margin-top: 30px;">
+        <div class="button-container" style="width: 400px; margin-top: 30px;">
             <button id="toggleLiveSourceSyncBtn" onclick="toggleStatus('toggleLiveSourceSyncBtn')">${sourceSync}</button>
-            <button id="toggleCheckSpeedSyncBtn" onclick="toggleStatus('toggleCheckSpeedSyncBtn')">${checkSync}</button>
             <button id="toggleLiveChannelNameProcessBtn" onclick="toggleStatus('toggleLiveChannelNameProcessBtn')">${nameProcess}</button>
-        </div>
-        <div class="button-container" style="margin-top: 20px;">
-            <button id="checkSourceBtn" onclick="checkSource()">测速校验</button>
             <button id="cleanUnusedSourceBtn" onclick="cleanUnusedSource()">清理数据</button>
-            <button style="visibility: hidden;">占位</button>
         </div>
     `;
 }
@@ -788,41 +790,6 @@ function saveLiveSourceInfoAs() {
                     M3U：<br><a href="${m3uUrl}" target="_blank">${m3uUrl}</a><br>
                     TXT：<br><a href="${txtUrl}" target="_blank">${txtUrl}`;
         showMessageModal(message);
-    };
-}
-
-// 检验每个直播源的访问速度及分辨率
-function checkSource() {
-    showMessageModal('');
-    const messageContainer = document.getElementById('messageModalMessage');
-
-    // 设置说明和开始测试、清除结果按钮
-    messageContainer.innerHTML = `
-        <div>
-        即将开始检测每个直播源的访问速度及分辨率，<br>
-        该过程可能需要一些时间，请耐心等待。<br><br>
-        注意：结果不一定准确，且暂无法解析 IPv6 源。<br><br>
-        </div>
-        <div class="button-container" style="width: 380px; margin-bottom: -10px;">
-            <button id="foregroundCheckBtn">前台测速</button>
-            <button id="backgroundCheckBtn">后台测速</button>
-            <button id="cleanCheckResultBtn">清除结果</button>
-        </div>
-    `;
-
-    // 前台测速
-    document.getElementById('foregroundCheckBtn').onclick = function () {
-        showExecResult('check.php', () => showModal('live', popup = false));
-    };
-
-    // 后台测速
-    document.getElementById('backgroundCheckBtn').onclick = function () {
-        showExecResult('check.php?backgroundMode=true', () => showModal('live', popup = false), fullSize = false);
-    };
-
-    // 清除结果
-    document.getElementById('cleanCheckResultBtn').onclick = function () {
-        showExecResult('check.php?cleanMode=true', () => showModal('live', popup = false), fullSize = false);
     };
 }
 
