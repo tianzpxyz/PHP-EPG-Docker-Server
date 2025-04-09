@@ -14,6 +14,7 @@ document.getElementById('settingsForm').addEventListener('submit', function(even
         'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 'gen_list_enable', 
         'check_update', 'token_range', 'user_agent_range', 'live_template_enable', 'live_fuzzy_match', 
         'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 'live_tvg_name_enable', 
+        'live_source_auto_sync', 'live_channel_name_process', 'gen_live_update_time', 'm3u_icon_first', 
         'check_ipv6', 'min_resolution_width', 'min_resolution_height', 'urls_limit','sort_by_delay', 
         'check_speed_auto_sync'];
 
@@ -247,6 +248,9 @@ function showModal(type, popup = true, data = '') {
             break;
         case 'chekspeed':
             modal = document.getElementById("checkSpeedModal");
+            break;
+        case 'morelivesetting':
+            modal = document.getElementById("moreLiveSettingModal");
             break;
         case 'moresetting':
             updateMySQLFields(); // 设置 MySQL 相关输入框状态
@@ -670,23 +674,6 @@ document.getElementById('liveSourceFile').addEventListener('change', function() 
     this.value = ''; // 重置文件输入框的值，确保可以连续上传相同文件
 });
 
-// 设置直播源自动同步、优化频道名开关
-function toggleStatus(toggleBtn) {
-    fetch(`manage.php?toggle_status=true&toggle_button=${toggleBtn}`)
-        .then(response => response.json())
-        .then(data => {
-            // 更新按钮显示
-            document.getElementById(toggleBtn).innerHTML = 
-                `${toggleBtn === "toggleLiveSourceSyncBtn" ? "同步更新"
-                 : toggleBtn === "toggleCheckSpeedSyncBtn" ? "同步测速"
-                 : toggleBtn === "toggleLiveChannelNameProcessBtn" ? "频道更名" : "Error"}: ${data.status === 1 ? "是" : "否"}`;
-            const syncStatus = document.getElementById("toggleLiveSourceSyncBtn").innerHTML;
-            const processStatus = document.getElementById("toggleLiveChannelNameProcessBtn").innerHTML;
-            document.getElementById('showMoreLiveSettingBtn').setAttribute('onclick', `showMoreLiveSetting('${syncStatus}', '${processStatus}')`);
-        })
-        .catch(error => console.error("Error:", error));
-}
-
 // 保存编辑后的直播源地址
 function saveLiveSourceFile() {
     source = document.getElementById('sourceUrlTextarea');
@@ -709,18 +696,6 @@ function saveLiveSourceFile() {
 }
 
 document.getElementById('sourceUrlTextarea').addEventListener('blur', saveLiveSourceFile);
-
-// 显示更多直播源设置
-function showMoreLiveSetting(sourceSync, nameProcess) {
-    showMessageModal('');
-    document.getElementById('messageModalMessage').innerHTML = `
-        <div class="button-container" style="width: 400px; margin-top: 30px;">
-            <button id="toggleLiveSourceSyncBtn" onclick="toggleStatus('toggleLiveSourceSyncBtn')">${sourceSync}</button>
-            <button id="toggleLiveChannelNameProcessBtn" onclick="toggleStatus('toggleLiveChannelNameProcessBtn')">${nameProcess}</button>
-            <button id="cleanUnusedSourceBtn" onclick="cleanUnusedSource()">清理数据</button>
-        </div>
-    `;
-}
 
 // 保存编辑后的直播源信息
 function saveLiveSourceInfo(popup = true, filePath = '') {

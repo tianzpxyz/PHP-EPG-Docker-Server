@@ -299,7 +299,7 @@ function fetchHandler($query_params) {
         }
 
         // 无法获取到数据时返回默认数据
-        $ret_default = !isset($Config['ret_default']) || $Config['ret_default'];
+        $ret_default = $Config['ret_default'] ?? true;
         $iconUrl = iconUrlMatch($cleanChannelName) ?? iconUrlMatch($oriChannelName);
         if ($type === 'diyp') {
             // 返回默认 diyp 数据

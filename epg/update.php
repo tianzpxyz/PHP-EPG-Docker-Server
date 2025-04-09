@@ -155,7 +155,7 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
         logMessage($log_messages, "【下载】 成功：xml 文件 {$fileSizeReadable}");
 
         $xml_data = preg_replace('/[\x00-\x1F]/u', ' ', $xml_data); // 清除所有控制字符
-        if (isset($Config['all_chs']) && $Config['all_chs']) { $xml_data = t2s($xml_data); }
+        if ($Config['all_chs'] ?? false) { $xml_data = t2s($xml_data); }
         $db->beginTransaction();
         try {
             $processCount = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list);
@@ -195,7 +195,7 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
     }
 
     // 繁简转换和频道筛选
-    $simplifiedChannelNames = (isset($Config['all_chs']) && $Config['all_chs']) ? 
+    $simplifiedChannelNames = ($Config['all_chs'] ?? false) ? 
         $cleanChannelNames : explode("\n", t2s(implode("\n", $cleanChannelNames)));
     $channelNamesMap = [];
     foreach ($cleanChannelNames as $channelId => $channelName) {
@@ -532,7 +532,7 @@ foreach ($Config['xml_urls'] as $xml_url) {
 processIconListAndXmltv($db, $gen_list_mapping, $log_messages);
 
 // 判断是否同步更新直播源
-if (isset($Config['live_source_auto_sync']) && $Config['live_source_auto_sync'] == 1) {
+if ($Config['live_source_auto_sync'] ?? false) {
     $parseResult = doParseSourceInfo();
     if ($parseResult !== true) {
         logMessage($log_messages, "【直播文件】 部分更新异常：" . rtrim(str_replace('<br>', '、', $parseResult), '、'));
@@ -542,7 +542,7 @@ if (isset($Config['live_source_auto_sync']) && $Config['live_source_auto_sync'] 
 }
 
 // 判断是否同步测速校验
-if (isset($Config['check_speed_auto_sync']) && $Config['check_speed_auto_sync'] == 1) {
+if ($Config['check_speed_auto_sync'] ?? false) {
     exec('php check.php backgroundMode=1 > /dev/null 2>/dev/null &');
     logMessage($log_messages, "【测速校验】 已在后台运行");
 }

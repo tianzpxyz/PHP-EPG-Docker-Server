@@ -174,9 +174,8 @@ try {
         $action_map = [
             'get_update_logs', 'get_cron_logs', 'get_channel', 'get_epg_by_channel',
             'get_icon', 'get_channel_bind_epg', 'get_channel_match', 'get_gen_list',
-            'get_live_data', 'parse_source_info', 'toggle_status', 
-            'download_data', 'delete_unused_icons', 'delete_unused_live_data',
-            'get_version_log'
+            'get_live_data', 'parse_source_info', 'download_data', 'delete_unused_icons', 
+            'delete_unused_live_data', 'get_version_log'
         ];
         $action = key(array_intersect_key($_GET, array_flip($action_map))) ?: '';
 
@@ -397,19 +396,6 @@ try {
                 } else {
                     $dbResponse = ['success' => 'full'];
                 }
-                break;
-
-            case 'toggle_status':
-                // 切换状态
-                $toggleField = $_GET['toggle_button'] === 'toggleLiveSourceSyncBtn' ? 'live_source_auto_sync'
-                            : ($_GET['toggle_button'] === 'toggleCheckSpeedSyncBtn' ? 'check_speed_auto_sync' 
-                            : ($_GET['toggle_button'] === 'toggleLiveChannelNameProcessBtn' ? 'live_channel_name_process' : ''));
-                $currentStatus = isset($Config[$toggleField]) && $Config[$toggleField] == 1 ? 1 : 0;
-                $newStatus = ($currentStatus == 1) ? 0 : 1;
-                $Config[$toggleField] = $newStatus;
-                file_put_contents($configPath, json_encode($Config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                
-                $dbResponse = ['status' => $newStatus];
                 break;
 
             case 'download_data':

@@ -210,7 +210,8 @@ input[type="tel"] {
 .icon-modal-content {
     width: 700px;
 }
-.check-speed-modal-content {
+.check-speed-modal-content,
+.more-live-setting-modal-content {
     height: auto;
 }
 .close {
