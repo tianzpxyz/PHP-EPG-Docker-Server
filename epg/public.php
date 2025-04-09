@@ -558,7 +558,9 @@ function doParseSourceInfo($urlLine = null) {
             $finalChannelName = $dbChannelName ?: $cleanChannelName;
             $row['channelName'] = $liveChannelNameProcess ? $finalChannelName : $row['channelName'];
             $row['chsChannelName'] = $chsChannelName;
-            $row['iconUrl'] = iconUrlMatch($finalChannelName, true, false) ?: $row['iconUrl'];
+            $row['iconUrl'] = ($row['iconUrl'] ?? false) && ($Config['m3u_icon_first'] ?? false)
+                            ? $row['iconUrl']
+                            : (iconUrlMatch($finalChannelName, true, false) ?: $row['iconUrl']);
             $row['tvgName'] = $dbChannelName ?? $row['tvgName'];
         }
 
@@ -592,6 +594,14 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
     
     $m3uContent = "#EXTM3U x-tvg-url=\"\"\n";
     $groups = [];
+
+    // 生成更新时间
+    if ($Config['gen_live_update_time'] ?? false) {
+        $updateTime = date('Y-m-d H:i:s');
+        $m3uContent .= "#EXTINF:-1 group-title=\"更新时间\"," . $updateTime . "\nnull\n";
+        $groups['更新时间'][] = "$updateTime,null";
+    }
+
     $liveTvgIdEnable = $Config['live_tvg_id_enable'] ?? 1;
     $liveTvgNameEnable = $Config['live_tvg_name_enable'] ?? 1;
     $liveTvgLogoEnable = $Config['live_tvg_logo_enable'] ?? 1;
@@ -677,7 +687,8 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                         if ($channelName === $groupChannelName || 
                             ($fuzzyMatchingEnable && ($cleanChsChannelName === $cleanChsGroupChannelName || 
                             stripos($cleanChsGroupChannelName, 'CGTN') === false && stripos($cleanChsGroupChannelName, 'CCTV') === false && !empty($cleanChsChannelName) && 
-                            (stripos($cleanChsChannelName, $cleanChsGroupChannelName) !== false || stripos($cleanChsGroupChannelName, $cleanChsChannelName) !== false)))) {
+                            (stripos($cleanChsChannelName, $cleanChsGroupChannelName) !== false || stripos($cleanChsGroupChannelName, $cleanChsChannelName) !== false) || 
+                            (strpos($groupChannelName, 'regex:') === 0) && @preg_match(substr($groupChannelName, 6), $channelName)))) {
                             // 更新信息
                             $streamParts = explode("<br>", $streamUrl);
                             $streamUrl = array_pop($streamParts);
@@ -686,7 +697,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                             $m3uStreamUrl = $streamUrl . (($m3uCommentEnabled && strpos($streamUrl, '$') === false) ? "\${$groupTitle}" : "");
                             $rowGroupTitle = $templateGroupTitle === 'default' ? $groupTitle : $templateGroupTitle;
                             $row['groupTitle'] = $rowGroupTitle;
-                            $row['channelName'] = $groupChannelName; // 使用 $groupChannels 中的名称
+                            $row['channelName'] = strpos($groupChannelName, 'regex:') === 0 ? $channelName : $groupChannelName; // 使用 $groupChannels 中的名称
                             $row['streamUrl'] = $streamUrl . (($commentEnabled && strpos($streamUrl, '$') === false) ? "\${$groupTitle}" : "");
                             $newChannelData[] = $row;
 

@@ -320,8 +320,7 @@
             <button id="checkSourceBtn" onclick="showModal('chekspeed')">测速校验</button>
             <button id="saveSourceBtn" onclick="saveLiveSourceInfo()">保存</button>
             <button id="saveSourceAsBtn" onclick="saveLiveSourceInfoAs()">另存为</button>
-            <button id="showMoreLiveSettingBtn" onclick="showMoreLiveSetting(`<?php echo (@$Config['live_source_auto_sync'] == 1 ? '同步更新: 是' : '同步更新: 否'); ?>`, 
-                                                        `<?php echo (@$Config['live_channel_name_process'] == 1 ? '频道更名: 是' : '频道更名: 否'); ?>`)">更多设置</button>
+            <button id="showMoreLiveSettingBtn" onclick="showModal('morelivesetting')">更多设置</button>
         </div>
         <br>
         
@@ -406,7 +405,6 @@
     </div>
 </div>
 
-
 <!-- 测速校验模态框 -->
 <div id="checkSpeedModal" class="modal">
     <div class="modal-content check-speed-modal-content">
@@ -473,6 +471,63 @@
             </div>
             <div class="column">
                 <button id="cleanCheckResultBtn" onclick="showExecResult('check.php?cleanMode=true', () => showModal('live', popup = false), fullSize = false)">清除结果</button>
+            </div>
+            <div class="column">
+                <button id="saveConfig" onclick="updateConfig()">保存配置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 直播源管理更多设置模态框 -->
+<div id="moreLiveSettingModal" class="modal">
+    <div class="modal-content more-live-setting-modal-content">
+        <span class="close">&times;</span>
+        <h2>更多设置</h2>
+        <!-- 第一行 -->
+        <div class="row">
+            <div class="column">
+                <label for="live_source_auto_sync">跟随 EPG 同步更新：</label>
+                <select id="live_source_auto_sync" name="live_source_auto_sync" required>
+                    <option value="1" <?php if (@$Config['live_source_auto_sync'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['live_source_auto_sync'] == 0) echo 'selected'; ?>>否</option>
+                </select>
+            </div>
+            <div class="column">
+                <label for="live_channel_name_process">优化频道名称：</label>
+                <select id="live_channel_name_process" name="live_channel_name_process" required>
+                    <option value="1" <?php if (@$Config['live_channel_name_process'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['live_channel_name_process'] == 0) echo 'selected'; ?>>否</option>
+                </select>
+            </div>
+            <div class="column">
+                <label for="gen_live_update_time">生成更新时间：</label>
+                <select id="gen_live_update_time" name="gen_live_update_time" required>
+                    <option value="1" <?php if (@$Config['gen_live_update_time'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['gen_live_update_time'] == 0) echo 'selected'; ?>>否</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 第二行 -->
+        <div class="row" style="margin-top: 25px; margin-bottom: 0px;">
+            <div class="column">
+                <label for="m3u_icon_first">优先读取 M3U 台标：</label>
+                <select id="m3u_icon_first" name="m3u_icon_first" required>
+                    <option value="1" <?php if (@$Config['m3u_icon_first'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['m3u_icon_first'] == 0) echo 'selected'; ?>>否</option>
+                </select>
+            </div>
+            <div class="column">
+            </div>
+            <div class="column">
+            </div>
+        </div>
+
+        <!-- 第三行 -->
+        <div class="row" style="margin-top: 25px; margin-bottom: 0px;">
+            <div class="column">
+                <button id="cleanUnusedSourceBtn" onclick="cleanUnusedSource()">清理缓存数据</button>
             </div>
             <div class="column">
                 <button id="saveConfig" onclick="updateConfig()">保存配置</button>
