@@ -28,9 +28,10 @@ ob_implicit_flush(true);
 // 设置 header，防止浏览器缓存输出
 header('X-Accel-Buffering: no');
 
+// 引入公共脚本
+require_once 'public.php';
+
 // 读取 Config 文件
-$configPath = __DIR__ . '/data/config.json';
-$Config = json_decode(file_get_contents($configPath), true) or die("配置文件解析失败: " . json_last_error_msg());
 $checkIPv6 = $Config['check_ipv6'] ?? 0;
 $minWidth = $Config['min_resolution_width'] ?? 0;
 $minHeight = $Config['min_resolution_height'] ?? 0;
@@ -38,15 +39,15 @@ $urlsLimit = $Config['urls_limit'] ?? 0;
 $sortByDelay = $Config['sort_by_delay'] ?? 0;
 
 // 文件路径
-$channelsFile = 'data/live/channels.csv';
-$channelsBackFile = 'data/live/channels_orig.csv';
-$channelsInfoFile = 'data/live/channels_info.csv';
+$channelsFilePath = $liveDir . 'channels.csv';
+$channelsBackFilePath = $liveDir . 'channels_orig.csv';
+$channelsInfoFilePath = $liveDir . 'channels_info.csv';
 
 // cleanMode 参数为 true 时，清除测速数据
 if (isset($_GET['cleanMode']) && $_GET['cleanMode'] === 'true') {
     // 读取 channels_info.csv 文件
-    if (!file_exists($channelsInfoFile)) die('channels_info.csv 文件不存在');
-    $channelsInfo = array_map('str_getcsv', file($channelsInfoFile));
+    if (!file_exists($channelsInfoFilePath)) die('channels_info.csv 文件不存在');
+    $channelsInfo = array_map('str_getcsv', file($channelsInfoFilePath));
     $infoHeaders = array_shift($channelsInfo);
     $tagIndex = array_search('tag', $infoHeaders);
     $speedIndex = array_search('speed', $infoHeaders);
@@ -54,8 +55,8 @@ if (isset($_GET['cleanMode']) && $_GET['cleanMode'] === 'true') {
     if ($tagIndex === false || $speedIndex === false) die('channels_info.csv 文件缺少字段');
 
     // 读取 channels.csv 文件
-    if (!file_exists($channelsFile)) die('channels.csv 文件不存在');
-    $channels = array_map('str_getcsv', file($channelsFile));
+    if (!file_exists($channelsFilePath)) die('channels.csv 文件不存在');
+    $channels = array_map('str_getcsv', file($channelsFilePath));
     $headers = array_shift($channels);
     $disableIndex = array_search('disable', $headers);
     $modifiedIndex = array_search('modified', $headers);
@@ -76,14 +77,14 @@ if (isset($_GET['cleanMode']) && $_GET['cleanMode'] === 'true') {
 
     // 重新写回更新后的 channels.csv 文件
     array_unshift($channels, $headers);
-    $fileHandle = fopen($channelsFile, 'w');
+    $fileHandle = fopen($channelsFilePath, 'w');
     foreach ($channels as &$channel) {
         fputcsv($fileHandle, $channel);
     }
     fclose($fileHandle);
 
     // 仅清空 channels_info.csv 中的数据，保留表头
-    $fileHandle = fopen($channelsInfoFile, 'w');
+    $fileHandle = fopen($channelsInfoFilePath, 'w');
     fputcsv($fileHandle, $infoHeaders); // 写入表头
     fclose($fileHandle);
 
@@ -94,10 +95,10 @@ if (isset($_GET['cleanMode']) && $_GET['cleanMode'] === 'true') {
 echo '<strong><span style="color: red;">前台测速过程中请勿关闭浏览器</span></strong><br><br>';
 
 // 如果备份文件不存在，尝试从原文件创建备份
-if (!file_exists($channelsBackFile) && !copy($channelsFile, $channelsBackFile)) {
+if (!file_exists($channelsBackFilePath) && !copy($channelsFilePath, $channelsBackFilePath)) {
     die('无法创建 channels_orig.csv 备份文件');
 }
-$channels = array_map('str_getcsv', file($channelsBackFile));
+$channels = array_map('str_getcsv', file($channelsBackFilePath));
 
 // 提取表头，定位 streamUrl 和 tag 索引
 $headers = array_shift($channels);
@@ -122,7 +123,7 @@ $infoHeaders = ['tag', 'resolution', 'speed'];
 $infoData = [];
 
 // 写入 channels_info.csv 文件
-$fileHandle = fopen($channelsInfoFile, 'w');
+$fileHandle = fopen($channelsInfoFilePath, 'w');
 fputcsv($fileHandle, $infoHeaders);
 
 // 遍历频道并检测分辨率和速度
@@ -231,9 +232,16 @@ if ($urlsLimit > 0) {
     });
 }
 
+// 重新生成 M3U 和 TXT 文件
+$channelsData = [];
+foreach ($channels as $row) {
+    $channelsData[] = array_combine($headers, $row);
+}
+generateLiveFiles($channelsData, 'tv', $saveOnly = true);
+
 // 重新写回 channels.csv 文件
 array_unshift($channels, $headers);
-$fileHandle = fopen($channelsFile, 'w');
+$fileHandle = fopen($channelsFilePath, 'w');
 foreach ($channels as $channel) {
     fputcsv($fileHandle, $channel);
 }
