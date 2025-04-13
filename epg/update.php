@@ -106,9 +106,9 @@ function getGenList($db) {
 
             // 模糊匹配并选择最长的频道名称
             if ((stripos($epgChannel, $cleanedChannel) === 0 || stripos($cleanedChannel, $epgChannel) !== false) 
-                && strlen($epgChannel) > $bestMatchLength) {
+                && mb_strlen($epgChannel) > $bestMatchLength) {
                 $bestMatch = $epgChannel;
-                $bestMatchLength = strlen($epgChannel);  // 更新为更长的匹配
+                $bestMatchLength = mb_strlen($epgChannel);  // 更新为更长的匹配
             }
         }
 
@@ -508,8 +508,14 @@ foreach ($Config['xml_urls'] as $xml_url) {
     }
 
     // 更新 XML 数据
-    list($xml_url_str, , $userAgent) = explode('#', $xml_url) + [1 => '', 2 => ''];
-    $userAgent = trim($userAgent);
+    $xml_url_str = trim(strtok($xml_url, '#'));
+    $userAgent = '';
+    foreach (explode('#', $xml_url) as $part) {
+        if (stripos($part = trim($part), 'UA=') === 0) {
+            $userAgent = substr($part, 3);
+            break;
+        }
+    }
     $cleaned_url = trim(strpos($xml_url_str, '=>') !== false ? explode('=>', $xml_url_str)[1] : $xml_url_str);
     logMessage($log_messages, "【地址】 $cleaned_url");
 
