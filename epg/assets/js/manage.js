@@ -363,8 +363,11 @@ function showVersionLog(doCheckUpdate = false) {
 
 // 显示使用说明
 function showHelpModal() {
-    fetch("assets/html/readme.html").then(res => res.text()).then(data => helpContent.innerHTML = data);
-    showModalWithMessage("helpModal");
+    fetch("manage.php?get_readme_content=true")
+        .then(response => response.json())
+        .then(data => {
+            showModalWithMessage("helpModal", "helpMessage", data.content);
+        });
 }
 
 // 更新 EPG 内容
