@@ -175,7 +175,7 @@ try {
             'get_update_logs', 'get_cron_logs', 'get_channel', 'get_epg_by_channel',
             'get_icon', 'get_channel_bind_epg', 'get_channel_match', 'get_gen_list',
             'get_live_data', 'parse_source_info', 'download_data', 'delete_unused_icons', 
-            'delete_unused_live_data', 'get_version_log'
+            'delete_unused_live_data', 'get_version_log', 'get_readme_content'
         ];
         $action = key(array_intersect_key($_GET, array_flip($action_map))) ?: '';
 
@@ -448,44 +448,10 @@ try {
                     }
                 }
 
-                // 删除 modifications.csv 未在 channels.csv 中出现的条目
-                $channelsFilePath = $liveDir . 'channels.csv';
-                $modificationsFilePath = $liveDir . 'modifications.csv';
+                // 删除 modifications.csv 文件
+                @unlink($liveDir . 'modifications.csv');
                 
-                $deletedRecordCount = 0;
-                if (file_exists($channelsFilePath) && file_exists($modificationsFilePath)) {
-                    // 读取 channels.csv 中的 tag 字段
-                    $channelTags = [];
-                    $file = fopen($channelsFilePath, 'r');
-                    $header = fgetcsv($file);
-                    while (($row = fgetcsv($file)) !== false) {
-                        $channelTags[] = $row[array_search('tag', $header)];
-                    }
-                    fclose($file);
-                
-                    // 过滤 modifications.csv 数据并统计移除行数
-                    $file = fopen($modificationsFilePath, 'r');
-                    $modificationsHeader = fgetcsv($file);
-                    $filteredData = [];
-                    while (($row = fgetcsv($file)) !== false) {
-                        if (in_array($row[array_search('tag', $modificationsHeader)], $channelTags)) {
-                            $filteredData[] = $row;
-                        } else {
-                            $deletedRecordCount++;
-                        }
-                    }
-                    fclose($file);
-                
-                    // 写回过滤后的数据
-                    $file = fopen($modificationsFilePath, 'w');
-                    fputcsv($file, $modificationsHeader);
-                    foreach ($filteredData as $row) {
-                        fputcsv($file, $row);
-                    }
-                    fclose($file);
-                }
-                
-                $dbResponse = ['success' => true, 'message' => "共清理了 $deletedFileCount 个缓存文件， $deletedRecordCount 条修改记录。"];
+                $dbResponse = ['success' => true, 'message' => "共清理了 $deletedFileCount 个缓存文件。<br>已删除所有修改记录，请重新解析。"];
                 break;
 
             case 'get_version_log':
@@ -524,6 +490,14 @@ try {
                 require_once 'assets/Parsedown.php';
                 $htmlContent = (new Parsedown())->text($markdownContent);
                 $dbResponse = ['success' => true, 'content' => $updateMessage . $htmlContent, 'is_updated' => $isUpdated];
+                break;
+
+            case 'get_readme_content':
+                $readmeFile = 'assets/html/readme.md';
+                $readmeContent = file_exists($readmeFile) ? file_get_contents($readmeFile) : '';
+                require_once 'assets/Parsedown.php';
+                $htmlContent = (new Parsedown())->text($readmeContent);
+                $dbResponse = ['success' => true, 'content' => $htmlContent];
                 break;
 
             default:
