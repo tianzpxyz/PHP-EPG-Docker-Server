@@ -154,7 +154,7 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
             : round($fileSize / 1024, 2) . ' KB';
         logMessage($log_messages, "【下载】 成功：xml 文件 {$fileSizeReadable}");
 
-        $xml_data = preg_replace('/[\x00-\x1F]/u', ' ', $xml_data); // 清除所有控制字符
+        $xml_data = mb_convert_encoding($xml_data, 'UTF-8'); // 转换成 UTF-8 编码
         if ($Config['all_chs'] ?? false) { $xml_data = t2s($xml_data); }
         $db->beginTransaction();
         try {
@@ -264,6 +264,7 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
                 'start' => $startTime,
                 'end' => $startDate === $endDate ? $endTime : '00:00',
                 'title' => (string)$programme->title,
+                'sub-title' => isset($programme->{'sub-title'}) ? (string)$programme->{'sub-title'} : '',
                 'desc' => isset($programme->desc) ? (string)$programme->desc : ''
             ];
     
@@ -275,6 +276,7 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
                     'start' => '00:00',
                     'end' => $endTime,
                     'title' => $programmeData['title'],
+                    'sub-title' => $programmeData['sub-title'],
                     'desc' => $programmeData['desc']
                 ];
             }
@@ -428,6 +430,12 @@ function processIconListAndXmltv($db, $gen_list_mapping, &$log_messages) {
                 $xmlWriter->writeAttribute('lang', 'zh');
                 $xmlWriter->text(htmlspecialchars($item['title'], ENT_XML1, 'UTF-8'));
                 $xmlWriter->endElement(); // title
+                if (!empty($item['sub-title'])) {
+                    $xmlWriter->startElement('sub-title');
+                    $xmlWriter->writeAttribute('lang', 'zh');
+                    $xmlWriter->text(htmlspecialchars($item['sub-title'], ENT_XML1, 'UTF-8'));
+                    $xmlWriter->endElement(); // sub-title
+                }
                 if (!empty($item['desc'])) {
                     $xmlWriter->startElement('desc');
                     $xmlWriter->writeAttribute('lang', 'zh');
