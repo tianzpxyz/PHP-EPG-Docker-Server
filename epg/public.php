@@ -503,7 +503,7 @@ function doParseSourceInfo($urlLine = null) {
                         $tag = md5($url . $groupTitle . $originalChannelName . $streamUrl);
 
                         $rowData = [
-                            'groupTitle' => $groupPrefix . $groupTitle,
+                            'groupTitle' => ($groupPrefix && strpos($groupTitle, $groupPrefix) !== 0 ? $groupPrefix : '') . $groupTitle,
                             'channelName' => $originalChannelName,
                             'chsChannelName' => '',
                             'streamUrl' => $streamUrl,
@@ -534,11 +534,11 @@ function doParseSourceInfo($urlLine = null) {
                     }
             
                     $originalChannelName = trim($parts[0]);
-                    $streamUrl = trim($parts[1]);
+                    $streamUrl = trim($parts[1]) . (isset($parts[2]) && $parts[2] === '' ? ',' : ''); // 最后一个 , 后为空，则视为 URL 一部分
                     $tag = md5($url . $groupTitle . $originalChannelName . $streamUrl);
 
                     $rowData = [
-                        'groupTitle' => $groupPrefix . $groupTitle,
+                        'groupTitle' => ($groupPrefix && strpos($groupTitle, $groupPrefix) !== 0 ? $groupPrefix : '') . $groupTitle,
                         'channelName' => $originalChannelName,
                         'chsChannelName' => '',
                         'streamUrl' => $streamUrl,
@@ -705,7 +705,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                             ($fuzzyMatchingEnable && ($cleanChsChannelName === $cleanChsGroupChannelName || 
                             stripos($cleanChsGroupChannelName, 'CGTN') === false && stripos($cleanChsGroupChannelName, 'CCTV') === false && !empty($cleanChsChannelName) && 
                             (stripos($cleanChsChannelName, $cleanChsGroupChannelName) || stripos($cleanChsGroupChannelName, $cleanChsChannelName)) || 
-                            (strpos($groupChannelName, 'regex:') === 0) && @preg_match(substr($groupChannelName, 6), $channelName)))) {
+                            (strpos($groupChannelName, 'regex:') === 0) && @preg_match(substr($groupChannelName, 6), $channelName . $cleanChsChannelName)))) {
                             // 更新信息
                             $streamParts = explode("<br>", $streamUrl);
                             $streamUrl = array_pop($streamParts);
@@ -805,7 +805,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
         fclose($channelsFile);
         fclose($modificationsFile);
 
-        // 解析直播源文件时，另存一份用于测速校验
+        // 解析直播源文件时，另存一份用于测速校验（避免接口数量限制导致的问题）
         if(!$saveOnly) {
             $channelsOrigFilePath = $liveDir . 'channels_orig.csv';
             copy($channelsFilePath, $channelsOrigFilePath);
