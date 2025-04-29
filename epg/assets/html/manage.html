@@ -38,7 +38,7 @@
         <label for="xml_urls">【EPG地址】</label>
         <span class="blue-span" id="channelbind" onclick="showModal('channelbindepg')">（频道指定源）</span>
         <br><br>
-        <textarea id="xml_urls" name="xml_urls" style="height: 122px;"><?php echo implode("\n", array_map('trim', $Config['xml_urls'])); ?></textarea>
+        <textarea id="xml_urls" name="xml_urls"><?php echo implode("\n", array_map('trim', $Config['xml_urls'])); ?></textarea>
         <br><br>
 
         <div class="form-row">
@@ -83,7 +83,7 @@
                 <span class="blue-span" id="iconInfo" onclick="showModal('icon')">（台标管理）</span>
                 <span class="blue-span" id="liveInfo" onclick="showModal('live')">（直播源管理）</span>
                 <br><br>
-                <textarea id="channel_mappings" name="channel_mappings" style="height: 142px;"><?php 
+                <textarea id="channel_mappings" name="channel_mappings"><?php 
                     echo implode("\n", array_map(function($search, $replace) {
                         return $search . ' => ' . $replace;
                     }, array_keys($Config['channel_mappings']), $Config['channel_mappings']));
@@ -142,7 +142,7 @@
     <div class="modal-content help-modal-content">
         <span class="close">&times;</span>
         <h2>使用说明</h2>
-        <div id="helpContent"></div>
+        <p id="helpMessage" style="height: 455px; overflow: auto;"></p>
     </div>
 </div>
 
@@ -306,7 +306,7 @@
         <!-- 输入框使用 textarea 用于输入直播源 URL -->
         <div class="input-container">
             <label for="sourceUrlTextarea">【直播源地址】</label><br>
-            <textarea id="sourceUrlTextarea" style="height: 102px;"></textarea>
+            <textarea id="sourceUrlTextarea"></textarea>
         </div>
         <br>
         
