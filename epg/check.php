@@ -118,20 +118,22 @@ foreach (['disable', 'modified'] as $field) {
     }
 }
 
-// 准备 channels_info.csv 数据
 $infoHeaders = ['tag', 'resolution', 'speed'];
-$infoData = [];
-
-// 写入 channels_info.csv 文件
-$fileHandle = fopen($channelsInfoFilePath, 'w');
-fputcsv($fileHandle, $infoHeaders);
-
-// 遍历频道并检测分辨率和速度
 $total = count($channels);
 $channelsInfoMap = [];
+
+// 只读取一次已有的 channels_info.csv
+$infoData = [];
+if (file_exists($channelsInfoFilePath)) {
+    $rows = array_map('str_getcsv', file($channelsInfoFilePath));
+    array_shift($rows); // 去掉表头
+    foreach ($rows as $row) {
+        $infoData[$row[0]] = [$row[1], $row[2]];
+    }
+}
+
 foreach ($channels as $i => $channel) {
-    $streamUrl = $channel[$streamUrlIndex];
-    $streamUrl = strtok($streamUrl, '$'); // 处理带有 $ 的 URL
+    $streamUrl = strtok($channel[$streamUrlIndex], '$'); // 处理带有 $ 的 URL
     $tag = $channel[$tagIndex];
     $channelName = $channelNameIndex !== false ? $channel[$channelNameIndex] : '未知频道';
 
@@ -149,9 +151,8 @@ foreach ($channels as $i => $channel) {
     // 使用 ffprobe 直接测量访问速度
     $startTime = microtime(true);
     $cmd = "ffprobe -rw_timeout 2000000 -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 \"{$streamUrl}\"";
-    $output = [];
     exec($cmd, $output, $returnVar);
-    $duration = microtime(true) - $startTime;
+    $duration = round((microtime(true) - $startTime) * 1000);
 
     // 初始化字段索引
     $disableIndex = array_search('disable', $headers);
@@ -159,13 +160,12 @@ foreach ($channels as $i => $channel) {
 
     // 如果 ffprobe 执行失败，访问速度设为 "N/A"，并设置 disable 和 modified 为 1
     if ($returnVar !== 0) {
-        $speed = 'N/A';
-        $resolution = 'N/A';
+        $resolution = $speed = 'N/A';
         $channel[$disableIndex] = '1';
         $channel[$modifiedIndex] = '1';
         echo '<strong><span style="color: red;">无法获取流信息，已停用</span></strong><br><br>';
     } else {
-        $speed = round($duration * 1000, 0);
+        $speed = $duration;
         $resolution = 'N/A';
         $channel[$disableIndex] = '0'; // 访问成功，清除禁用标志
         $channel[$modifiedIndex] = '0';
@@ -187,17 +187,19 @@ foreach ($channels as $i => $channel) {
         echo "分辨率: {$resolution}, 访问速度: {$speed} ms<br><br>";
     }
 
-    // 直接构建映射表，避免后续重复读取 CSV 文件
+    // 更新内存映射及写入文件
+    $infoData[$tag] = [$resolution, $speed];
     $channelsInfoMap[$tag] = is_numeric($speed) ? (int)$speed : PHP_INT_MAX;
-
-    // 保存到 channels_info.csv
-    fputcsv($fileHandle, [$tag, $resolution, $speed]);
-
-    // 更新 channels
     $channels[$i] = $channel;
+    $fileHandle = fopen($channelsInfoFilePath, 'w');
+    fputcsv($fileHandle, $infoHeaders);
+    foreach ($infoData as $t => [$res, $spd]) {
+        fputcsv($fileHandle, [$t, $res, $spd]);
+    }
+    fclose($fileHandle);
 }
-fclose($fileHandle);
-echo "检测完成，已生成 channels_info.csv 文件。<br>";
+
+echo "检测完成，已更新 channels_info.csv 文件。<br>";
 
 // 按响应速度排序
 if ($sortByDelay == 1) {
