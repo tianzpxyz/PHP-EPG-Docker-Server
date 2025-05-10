@@ -458,7 +458,15 @@
                 </select>
             </div>
             <div class="column">
-            </div>
+                <label for="check_speed_interval_factor">间隔周期倍率：</label>
+                <select id="check_speed_interval_factor" name="check_speed_interval_factor" required>
+                    <?php for ($i = 1; $i <= 10; $i++): ?>
+                        <option value="<?= $i ?>" <?= ($Config['check_speed_interval_factor'] ?? 1) == $i ? 'selected' : '' ?>>
+                            <?= $i ?>
+                        </option>
+                    <?php endfor; ?>
+                </select>
+            </div>            
         </div>
 
         <!-- 第三行 -->
