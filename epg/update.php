@@ -27,8 +27,8 @@ require_once 'public.php';
 set_time_limit(20*60);
 
 // 删除过期数据和日志
-function deleteOldData($db, &$log_messages) {
-    global $Config, $thresholdDate;
+function deleteOldData($db, $thresholdDate, &$log_messages) {
+    global $Config;
 
     // 删除 t.xml 和 t.xml.gz 文件
     if (!$Config['gen_xml']) {
@@ -380,16 +380,8 @@ function processIconListAndXmltv($db, $gen_list_mapping, &$log_messages) {
         foreach ($displayNames as $displayName) {
             $xmlWriter->startElement('display-name');
             $xmlWriter->writeAttribute('lang', 'zh');
-            $xmlWriter->text(htmlspecialchars($displayName, ENT_XML1, 'UTF-8'));
+            $xmlWriter->text($displayName);
             $xmlWriter->endElement(); // display-name
-        }
-
-        $iconUrl = $programs[0]['icon'] ?? '';
-
-        if ($iconUrl) {
-            $xmlWriter->startElement('icon');
-            $xmlWriter->writeAttribute('src', $iconUrl);
-            $xmlWriter->endElement(); // icon
         }
         
         $xmlWriter->endElement(); // channel
@@ -428,18 +420,18 @@ function processIconListAndXmltv($db, $gen_list_mapping, &$log_messages) {
                 $xmlWriter->writeAttribute('stop', formatTime($end_date, $end_time));
                 $xmlWriter->startElement('title');
                 $xmlWriter->writeAttribute('lang', 'zh');
-                $xmlWriter->text(htmlspecialchars($item['title'], ENT_XML1, 'UTF-8'));
+                $xmlWriter->text($item['title']);
                 $xmlWriter->endElement(); // title
                 if (!empty($item['sub-title'])) {
                     $xmlWriter->startElement('sub-title');
                     $xmlWriter->writeAttribute('lang', 'zh');
-                    $xmlWriter->text(htmlspecialchars($item['sub-title'], ENT_XML1, 'UTF-8'));
+                    $xmlWriter->text($item['sub-title']);
                     $xmlWriter->endElement(); // sub-title
                 }
                 if (!empty($item['desc'])) {
                     $xmlWriter->startElement('desc');
                     $xmlWriter->writeAttribute('lang', 'zh');
-                    $xmlWriter->text(htmlspecialchars($item['desc'], ENT_XML1, 'UTF-8'));
+                    $xmlWriter->text($item['desc']);
                     $xmlWriter->endElement(); // desc
                 }
                 $xmlWriter->endElement(); // programme
@@ -490,7 +482,7 @@ $initialCount = $db->query("SELECT COUNT(*) FROM epg_data")->fetchColumn();
 
 // 删除过期数据
 $thresholdDate = date('Y-m-d', strtotime("-{$Config['days_to_keep']} days +1 day"));
-deleteOldData($db, $log_messages);
+deleteOldData($db, $thresholdDate, $log_messages);
 
 // 获取限定频道列表及映射关系
 $gen_res = getGenList($db);
@@ -516,26 +508,27 @@ foreach ($Config['xml_urls'] as $xml_url) {
     }
 
     // 更新 XML 数据
-    $xml_url_str = trim(strtok($xml_url, '#'));
+    $xml_parts = explode('#', $xml_url);
+    $cleaned_url = trim($xml_parts[0]);
     $userAgent = '';
-    foreach (explode('#', $xml_url) as $part) {
-        if (stripos($part = trim($part), 'UA=') === 0) {
-            $userAgent = substr($part, 3);
-            break;
-        }
-    }
-    $cleaned_url = trim(strpos($xml_url_str, '=>') !== false ? explode('=>', $xml_url_str)[1] : $xml_url_str);
+    $white_list = $black_list = [];
+    
     logMessage($log_messages, "【地址】 $cleaned_url");
-
-    $black_list = $white_list = [];
-    // 判断是否有限定频道列表、屏蔽频道列表并下载数据
-    if (strpos($xml_url_str, '=>') !== false) {
-        if (strpos($xml_url_str, '!') === 0) {
-            $black_list = array_map('trim', explode(",", explode('=>', str_replace('!', '', $xml_url_str))[0]));
-            logMessage($log_messages, "【临时】 屏蔽频道：" . implode(", ", $black_list));
-        } else {
-            $white_list = array_map('trim', explode(",", explode('=>', $xml_url_str)[0]));
-            logMessage($log_messages, "【临时】 限定频道：" . implode(", ", $white_list));
+    
+    foreach ($xml_parts as $part) {
+        $part = trim($part);
+        if (stripos($part, 'UA=') === 0 || stripos($part, 'useragent=') === 0) {
+            $userAgent = substr($part, strpos($part, '=') + 1);
+        } elseif (stripos($part, 'FT=') === 0 || stripos($part, 'filter=') === 0) {
+            $filter_raw = t2s(trim(substr($part, strpos($part, '=') + 1)));
+            $list = array_map('trim', explode(',', ltrim($filter_raw, '!')));
+            if (strpos($filter_raw, '!') === 0) {
+                $black_list = $list;
+                logMessage($log_messages, "【临时】 屏蔽频道：" . implode(", ", $black_list));
+            } else {
+                $white_list = $list;
+                logMessage($log_messages, "【临时】 限定频道：" . implode(", ", $white_list));
+            }
         }
     }
         
@@ -553,12 +546,6 @@ if ($Config['live_source_auto_sync'] ?? false) {
     } else {
         logMessage($log_messages, "【直播文件】 已同步更新");
     }
-}
-
-// 判断是否同步测速校验
-if ($Config['check_speed_auto_sync'] ?? false) {
-    exec('php check.php backgroundMode=1 > /dev/null 2>/dev/null &');
-    logMessage($log_messages, "【测速校验】 已在后台运行");
 }
 
 // 统计更新后数据条数
