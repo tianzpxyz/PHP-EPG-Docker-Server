@@ -440,11 +440,25 @@ function doParseSourceInfo($urlLine = null) {
         $parts = explode('#', $line);
         $url = trim($parts[0]);
         $groupPrefix = $userAgent = $replacePattern = '';
+        $white_list = $black_list = [];
+
         foreach ($parts as $part) {
             $part = ltrim($part);
-            if (stripos($part, 'PF=') === 0) $groupPrefix = substr($part, 3);
-            elseif (stripos($part, 'UA=') === 0) $userAgent = substr(rtrim($part), 3);
-            elseif (stripos($part, 'RP=') === 0) $replacePattern = substr(rtrim($part), 3);
+            if (stripos($part, 'PF=') === 0 || stripos($part, 'prefix=') === 0) {
+                $groupPrefix = substr($part, strpos($part, '=') + 1);
+            } elseif (stripos($part, 'UA=') === 0 || stripos($part, 'useragent=') === 0) {
+                $userAgent = trim(substr($part, strpos($part, '=') + 1));
+            } elseif (stripos($part, 'RP=') === 0 || stripos($part, 'replace=') === 0) {
+                $replacePattern = trim(substr($part, strpos($part, '=') + 1));
+            } elseif (stripos($part, 'FT=') === 0 || stripos($part, 'filter=') === 0) {
+                $filter_raw = t2s(trim(substr($part, strpos($part, '=') + 1)));
+                $list = array_map('trim', explode(',', ltrim($filter_raw, '!')));
+                if (strpos($filter_raw, '!') === 0) {
+                    $black_list = $list;
+                } else {
+                    $white_list = $list;
+                }
+            }
         }
     
         // 获取 URL 内容
@@ -562,6 +576,19 @@ function doParseSourceInfo($urlLine = null) {
 
         // 将转换后的信息写回 urlChannelData
         foreach ($urlChannelData as $index => &$row) {
+            // 如果不在白名单或在黑名单中，删除该行
+            $chsChannelName = $chsChannelNames[$index];
+            $in_white = empty($white_list) || array_filter($white_list, function ($w) use ($chsChannelName) {
+                return strpos($chsChannelName, $w) !== false;
+            });
+            $in_black = array_filter($black_list, function ($b) use ($chsChannelName) {
+                return strpos($chsChannelName, $b) !== false;
+            });
+            if (!$in_white || $in_black) {
+                unset($urlChannelData[$index]);
+                continue;
+            }
+
             // 检查该行是否已经修改
             if (isset($existingData[$row['tag']])) {
                 $row = $existingData[$row['tag']];
@@ -569,7 +596,6 @@ function doParseSourceInfo($urlLine = null) {
             }
 
             // 更新部分信息
-            $chsChannelName = $chsChannelNames[$index];
             $cleanChannelName = cleanChannelName($chsChannelName);
             $dbChannelName = dbChannelNameMatch($cleanChannelName);
             $finalChannelName = $dbChannelName ?: $cleanChannelName;
