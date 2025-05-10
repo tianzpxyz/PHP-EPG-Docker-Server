@@ -2,9 +2,9 @@
 
 ### EPG地址
 支持 .xml 跟 .xml.gz 格式，地址前 `#` 临时停用，后 `#` 备注或设置参数，快捷键：Ctrl+/  
-自定义 UA ： `URL #UA=自定义UA`  
-（白名单）只提取部分频道：`频道名1, 频道ID2 => 源地址`  
-（黑名单）不提取部分频道：`!频道名1, 频道ID2 => 源地址`  
+自定义 UA ： `URL #UA=自定义UA / #useragent=自定义UA`  
+（白名单）只提取部分频道：`URL #FT=频道名1, 频道ID2 / #filter=频道名1, 频道ID2`  
+（黑名单）不提取部分频道：`URL #FT=!频道名1, 频道ID2 / #filter=!频道名1, 频道ID2`  
 注意：白名单、黑名单只能选其中一项  
 tvmao示例：`tvmao, 频道id, [自定义:]频道id, ...`  
 cntv示例：`cntv[:n], 频道id, [自定义:]频道id, ...`  
@@ -28,9 +28,11 @@ cntv示例：`cntv[:n], 频道id, [自定义:]频道id, ...`
 ### 直播源管理
 支持 .txt 和 .m3u 格式，光标离开后自动保存  
 地址前 `#` 临时停用，后 `#` 备注或设置参数，快捷键：Ctrl+/  
-`URL #PF=分组前缀`  
-`URL #UA=自定义UA`  
-`URL #RP=a1->b2,a2->b2,...`（字符串替换）  
+`URL #PF=分组前缀 / #prefix=分组前缀`  
+`URL #UA=自定义UA / #useragent=自定义UA`  
+`URL #RP=a1->b2,a2->b2,... / #replace=a1->b2,a2->b2,...`（字符串替换）  
+`URL #FT=频道名1, 频道名2 / #filter=频道名1, 频道名2`（白名单，模糊匹配）  
+`URL #FT=!频道名1, 频道名2 / #filter=!频道名1, 频道名2`（黑名单，模糊匹配）  
 在生成 m3u 文件时，「台标地址」、「tvg-id」、「tvg-name」字段可选  
 转换直播源：`http://xxx.xx/index.php?token=xxx&live=txt/m3u&url=xxx`  
 可添加 `&latest=1` 获取最新文件，不读取缓存  
