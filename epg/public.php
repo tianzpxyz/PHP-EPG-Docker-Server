@@ -578,11 +578,12 @@ function doParseSourceInfo($urlLine = null) {
         foreach ($urlChannelData as $index => &$row) {
             // 如果不在白名单或在黑名单中，删除该行
             $chsChannelName = $chsChannelNames[$index];
-            $in_white = empty($white_list) || array_filter($white_list, function ($w) use ($chsChannelName) {
-                return strpos($chsChannelName, $w) !== false;
+            $streamUrl = $row['streamUrl'];
+            $in_white = empty($white_list) || array_filter($white_list, function ($w) use ($chsChannelName, $streamUrl) {
+                return strpos($chsChannelName, $w) !== false || strpos($streamUrl, $w) !== false;
             });
-            $in_black = array_filter($black_list, function ($b) use ($chsChannelName) {
-                return strpos($chsChannelName, $b) !== false;
+            $in_black = array_filter($black_list, function ($b) use ($chsChannelName, $streamUrl) {
+                return strpos($chsChannelName, $b) !== false || strpos($streamUrl, $b) !== false;
             });
             if (!$in_white || $in_black) {
                 unset($urlChannelData[$index]);
