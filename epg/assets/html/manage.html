@@ -99,6 +99,10 @@
             <a href="assets/tinyfilemanager/index.php" target="_blank">管理文件</a>
             <button type="button" onclick="showModal('cron')">定时日志</button>
             <button type="button" onclick="showModal('update')">更新日志</button>
+            <button type="button" id="accessLogBtn" onclick="showAccessLogModal()" 
+                style="display: <?php echo (!isset($Config['debug_mode']) || $Config['debug_mode'] == 1) ? 'inline-block' : 'none'; ?>;">
+                访问日志
+            </button>
             <button type="button" onclick="showModal('moresetting')">更多设置</button>
             <button type="button" name="logoutbtn" onclick="logout()">退出</button>
         </div>
@@ -118,6 +122,9 @@
     <a href="https://gitee.com/taksssss/EPG-Server#-buy-me-a-coffee" target="_blank" style="color: #888; text-decoration: none;">
         ☕捐赠
     </a>
+    <a href="https://gitee.com/taksssss/EPG-Server/blob/main/DONATIONS.md" target="_blank" style="color: #888; text-decoration: none;">
+        🌹鸣谢列表
+    </a>
 </div>
 
 <!-- 消息模态框 -->
@@ -133,7 +140,7 @@
     <div class="modal-content version-update-modal-content">
         <span class="close">&times;</span>
         <h2>版本日志</h2>
-        <p id="versionLogMessage" style="height: 455px; overflow: auto;"></p>
+        <p id="versionLogMessage" style="height: 445px; overflow: auto;"></p>
     </div>
 </div>
 
@@ -142,7 +149,7 @@
     <div class="modal-content help-modal-content">
         <span class="close">&times;</span>
         <h2>使用说明</h2>
-        <p id="helpMessage" style="height: 455px; overflow: auto;"></p>
+        <p id="helpMessage" style="height: 445px; overflow: auto;"></p>
     </div>
 </div>
 
@@ -187,7 +194,16 @@
     <div class="modal-content cron-log-modal-content">
         <span class="close">&times;</span>
         <h2>定时任务日志</h2>
-        <textarea id="cronLogContent" readonly style="width: 100%; height: 460px;"></textarea>
+        <textarea id="cronLogContent" readonly style="height: 458px; resize: none;"></textarea>
+    </div>
+</div>
+
+<!-- 访问日志模态框 -->
+<div id="accesslogModal" class="modal">
+    <div class="modal-content access-log-modal-content">
+        <span class="close">&times;</span>
+        <h2>访问日志</h2>
+        <p id="accessLogContent" style="height: 445px; overflow: auto;"></p>
     </div>
 </div>
 
@@ -653,6 +669,11 @@
                 </select>
             </div>
             <div class="column">
+                <label for="debug_mode">调试模式：</label>
+                <select id="debug_mode" name="debug_mode" required>
+                    <option value="1" <?php if (!isset($Config['debug_mode']) || $Config['debug_mode'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (isset($Config['debug_mode']) && $Config['debug_mode'] == 0) echo 'selected'; ?>>否</option>
+                </select>
             </div>
             <div class="column">
             </div>
