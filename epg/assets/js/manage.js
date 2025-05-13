@@ -12,10 +12,10 @@ document.getElementById('settingsForm').addEventListener('submit', function(even
 
     const fields = ['update_config', 'gen_xml', 'include_future_only', 'ret_default', 'all_chs', 
         'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 'gen_list_enable', 
-        'check_update', 'token_range', 'user_agent_range', 'live_template_enable', 'live_fuzzy_match', 
-        'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 'live_tvg_name_enable', 
-        'live_source_auto_sync', 'live_channel_name_process', 'gen_live_update_time', 'm3u_icon_first', 
-        'check_ipv6', 'min_resolution_width', 'min_resolution_height', 'urls_limit','sort_by_delay', 
+        'check_update', 'token_range', 'user_agent_range', 'debug_mode', 'live_template_enable', 
+        'live_fuzzy_match', 'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 
+        'live_tvg_name_enable', 'live_source_auto_sync', 'live_channel_name_process', 'gen_live_update_time', 
+        'm3u_icon_first', 'check_ipv6', 'min_resolution_width', 'min_resolution_height', 'urls_limit','sort_by_delay', 
         'check_speed_auto_sync', 'check_speed_interval_factor'];
 
     // 创建隐藏字段并将其添加到表单
@@ -410,6 +410,36 @@ function updateCronLogContent(logData) {
     logContent.scrollTop = logContent.scrollHeight;
 }
 
+// 显示访问日志
+function showAccessLogModal() {
+    const box = document.getElementById("accessLogContent");
+    const modal = document.getElementById("accesslogModal");
+    let last = "", timer;
+
+    const load = () => fetch("manage.php?get_access_log=true")
+        .then(r => r.json())
+        .then(d => {
+            if (d.content !== last) {
+                last = d.content;
+                const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+                box.innerHTML = d.content;
+                if (atBottom) box.scrollTop = box.scrollHeight;
+            }
+        });
+
+    modal.style.zIndex = zIndex++;
+    modal.style.display = "block";
+    load();
+    timer = setInterval(load, 1000);
+
+    modal.onclick = e => {
+        if (e.target === modal || e.target.classList.contains("close")) {
+            modal.style.display = "none";
+            clearInterval(timer);
+        }
+    };
+}
+
 // 显示频道别名列表
 function updateChannelList(channelsData) {
     const channelTitle = document.getElementById('channelModalTitle');
@@ -761,6 +791,7 @@ function saveLiveSourceInfoAs() {
             .getAttribute('onclick')
             .match(/\`(.*?)\`/g)
             .map(s => s.slice(1, -1));
+        token = token.split(',')[0];
         var tokenStr = (tokenRange == 1 || tokenRange == 3) ? `token=${token}&` : '';
         var m3uUrl = `${serverUrl}/index.php?${tokenStr}live=m3u&url=${fileName}`;
         var txtUrl = `${serverUrl}/index.php?${tokenStr}live=txt&url=${fileName}`;
@@ -1283,6 +1314,7 @@ function updateTokenUA(type) {
 function showTokenRangeMessage(token, serverUrl) {
     var tokenRange = document.getElementById("token_range").value;
     var message = '';
+    token = token.split(',')[0];
     var baseUrl = serverUrl + '/index.php?token=' + token;
     if (tokenRange == "1" || tokenRange == "3") {
         message += `直播源地址：<br><a href="${baseUrl}&live=m3u" target="_blank">${baseUrl}&live=m3u</a><br>
@@ -1297,6 +1329,12 @@ function showTokenRangeMessage(token, serverUrl) {
     }
     document.getElementById('showLiveUrlBtn').setAttribute('onclick', `showLiveUrl('${token}', '${serverUrl}', '${tokenRange}')`);
 }
+
+// 监听 debug_mode 更变
+document.getElementById("debug_mode").addEventListener("change", function () {
+    const show = this.value === "1";
+    document.getElementById("accessLogBtn").style.display = show ? "inline-block" : "none";
+});
 
 // 切换主题
 document.getElementById('themeSwitcher').addEventListener('click', function() {
