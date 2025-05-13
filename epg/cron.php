@@ -142,7 +142,7 @@ while (true) {
     logCronMessage("【成功执行】 update.php (" . ++$check_counter . ")");
 
     // 判断是否同步测速校验
-    require_once 'public.php';
+    $Config = json_decode(@file_get_contents(__DIR__ . '/data/config.json'), true);
     $check_interval_factor = $Config['check_speed_interval_factor'] ?? 1;
     if (($Config['check_speed_auto_sync'] ?? false) && ($check_counter % $check_interval_factor === 0)) {
         exec('php ' . __DIR__ . '/check.php backgroundMode=1 > /dev/null 2>/dev/null &');
