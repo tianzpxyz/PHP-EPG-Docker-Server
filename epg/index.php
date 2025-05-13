@@ -30,7 +30,7 @@ $live = $query_params['live'] ?? '';
 if ($tokenRange !== 0) {
     $allowedTokens = array_map('trim', explode(',', $Config['token'] ?? ''));
     $token = $query_params['token'] ?? '';
-    if (!in_array($token, $allowedTokens) &&  (($tokenRange !== 2 && $live) || 
+    if (!in_array($token, $allowedTokens) && (($tokenRange !== 2 && $live) || 
         ($tokenRange !== 1 && !$live))) {
         http_response_code(403);
         echo '访问被拒绝：无效的 Token。';
@@ -49,6 +49,18 @@ if ($userAgentRange !== 0) {
         echo '访问被拒绝：无效的 User-Agent。';
         exit;
     }
+}
+
+// 记录访问日志
+if ($Config['debug_mode'] ?? 0) {
+    $logFile = __DIR__ . '/data/access.log';
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $time = date('Y-m-d H:i:s');
+    $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+    $url = rawurldecode($_SERVER['REQUEST_URI'] ?? 'unknown');
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    $logEntry = "[$time] [$ip] [$method] $url | UA: $userAgent\n";
+    file_put_contents($logFile, $logEntry, FILE_APPEND);
 }
 
 // 禁止输出错误提示

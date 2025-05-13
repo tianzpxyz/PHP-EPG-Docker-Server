@@ -42,5 +42,6 @@
     "user_agent_range": 0,
     "default_icon": "",
     "check_update": 1,
+    "debug_mode": 0,
     "manage_password": ""
 }

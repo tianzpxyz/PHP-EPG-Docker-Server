@@ -175,7 +175,7 @@ try {
             'get_update_logs', 'get_cron_logs', 'get_channel', 'get_epg_by_channel',
             'get_icon', 'get_channel_bind_epg', 'get_channel_match', 'get_gen_list',
             'get_live_data', 'parse_source_info', 'download_data', 'delete_unused_icons', 
-            'delete_unused_live_data', 'get_version_log', 'get_readme_content'
+            'delete_unused_live_data', 'get_version_log', 'get_readme_content', 'get_access_log'
         ];
         $action = key(array_intersect_key($_GET, array_flip($action_map))) ?: '';
 
@@ -497,6 +497,13 @@ try {
                 $readmeContent = file_exists($readmeFile) ? file_get_contents($readmeFile) : '';
                 require_once 'assets/Parsedown.php';
                 $htmlContent = (new Parsedown())->text($readmeContent);
+                $dbResponse = ['success' => true, 'content' => $htmlContent];
+                break;
+
+            case 'get_access_log':
+                $accesslogFile = 'data/access.log';
+                $accesslogContent = file_exists($accesslogFile) ? file_get_contents($accesslogFile) : '';
+                $htmlContent = '<pre>' . $accesslogContent . '持续刷新中...</pre>';
                 $dbResponse = ['success' => true, 'content' => $htmlContent];
                 break;
 
