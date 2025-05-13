@@ -57,7 +57,7 @@ textarea[id="channel_mappings"] {
 }
 
 textarea[id="gen_list_text"] {
-    min-height: 150px;
+    min-height: 149px;
 }
 
 textarea[id="sourceUrlTextarea"] {
@@ -177,7 +177,7 @@ button[id="showAllIcons"] {
 
 .button-container button[name="logoutbtn"] {
     border-radius: 10px;
-    width: 300px;
+    width: 350px;
 }
 
 input[type="text"],
@@ -249,7 +249,8 @@ input[type="tel"] {
 }
 
 .update-log-modal-content, 
-.live-source-modal-content {
+.live-source-modal-content,
+.access-log-modal-content {
     width: 930px;
 }
 
@@ -411,6 +412,7 @@ h2, span, label {
 
 /* 自定义滚动条样式 */
 ::-webkit-scrollbar {
+    height: 10px;
     width: 10px;
 }
 ::-webkit-scrollbar-thumb {
@@ -421,7 +423,8 @@ h2, span, label {
 ::-webkit-scrollbar-thumb:hover {
     background-color: #ccc;
 }
-::-webkit-scrollbar-track {
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
     background-color: #f5f5f5;
     cursor: default;
 }
@@ -530,10 +533,6 @@ body.dark input[type="tel"] {
     border: 1px solid #555;
 }
 
-body.dark textarea::-webkit-resizer {
-    background-color: #333;
-}
-
 body.dark textarea:disabled {
     background-color: #222;
     color: #888;
@@ -611,7 +610,8 @@ body.dark ::-webkit-scrollbar-thumb:hover {
     background-color: #666;
 }
 
-body.dark ::-webkit-scrollbar-track {
+body.dark ::-webkit-scrollbar-track,
+body.dark ::-webkit-scrollbar-corner {
     background-color: #2a2a2a;
 }
 
