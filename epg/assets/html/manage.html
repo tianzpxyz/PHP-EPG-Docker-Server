@@ -100,7 +100,7 @@
             <button type="button" onclick="showModal('cron')">定时日志</button>
             <button type="button" onclick="showModal('update')">更新日志</button>
             <button type="button" id="accessLogBtn" onclick="showAccessLogModal()" 
-                style="display: <?php echo (!isset($Config['debug_mode']) || $Config['debug_mode'] == 1) ? 'inline-block' : 'none'; ?>;">
+                style="display: <?php echo (isset($Config['debug_mode']) && $Config['debug_mode'] == 1) ? 'inline-block' : 'none'; ?>;">
                 访问日志
             </button>
             <button type="button" onclick="showModal('moresetting')">更多设置</button>
