@@ -38,6 +38,11 @@ function deleteOldData($db, $thresholdDate, &$log_messages) {
         @unlink(__DIR__ . '/data/t.xml.gz');
     }
 
+    // 删除 access.log
+    if (!($Config['debug_mode'] ?? 0)) {
+        @unlink(__DIR__ . '/data/access.log');
+    }
+
     // 循环清理过期数据
     $tables = [
         'epg_data' => ['date', '清理EPG数据'],
@@ -477,8 +482,18 @@ function compressXmlFile($xmlFilePath) {
 // 记录开始时间
 $startTime = microtime(true);
 
-// 统计更新前数据条数
-$initialCount = $db->query("SELECT COUNT(*) FROM epg_data")->fetchColumn();
+// 统计节目条数
+$getCount = function() use ($db) {
+    $count = 0;
+    foreach ($db->query("SELECT epg_diyp FROM epg_data") as $row) {
+        $epg = json_decode($row['epg_diyp'], true);
+        $count += count($epg['epg_data'] ?? []);
+    }
+    return $count;
+};
+
+$initialCount = $getCount();
+
 
 // 删除过期数据
 $thresholdDate = date('Y-m-d', strtotime("-{$Config['days_to_keep']} days +1 day"));
@@ -549,15 +564,13 @@ if ($Config['live_source_auto_sync'] ?? false) {
 }
 
 // 统计更新后数据条数
-$finalCount = $db->query("SELECT COUNT(*) FROM epg_data")->fetchColumn();
+$finalCount = $getCount();
 $dif = $finalCount - $initialCount;
-$msg = $dif != 0 ? ($dif > 0 ? " 增加 $dif 。" : " 减少 " . abs($dif) . " 。") : "";
-// 记录结束时间
-$endTime = microtime(true);
-// 计算运行时间（以秒为单位）
+$msg = $dif != 0 ? ($dif > 0 ? " 增加 $dif 条。" : " 减少 " . abs($dif) . " 条。") : "";
+$endTime = microtime(true); // 记录结束时间
 $executionTime = round($endTime - $startTime, 1);
 echo "<br>";
-logMessage($log_messages, "【更新完成】 {$executionTime} 秒。节目天数：更新前 {$initialCount} ，更新后 {$finalCount} 。" . $msg);
+logMessage($log_messages, "【更新完成】 {$executionTime} 秒。节目数量：更新前 {$initialCount} 条，更新后 {$finalCount} 条。" . $msg);
 
 // 将日志信息写入数据库
 $log_message_str = implode("<br>", $log_messages);
