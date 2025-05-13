@@ -671,8 +671,8 @@
             <div class="column">
                 <label for="debug_mode">调试模式：</label>
                 <select id="debug_mode" name="debug_mode" required>
-                    <option value="1" <?php if (!isset($Config['debug_mode']) || $Config['debug_mode'] == 1) echo 'selected'; ?>>是</option>
-                    <option value="0" <?php if (isset($Config['debug_mode']) && $Config['debug_mode'] == 0) echo 'selected'; ?>>否</option>
+                    <option value="1" <?php if (isset($Config['debug_mode']) && $Config['debug_mode'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (!isset($Config['debug_mode']) || $Config['debug_mode'] == 0) echo 'selected'; ?>>否</option>
                 </select>
             </div>
             <div class="column">
