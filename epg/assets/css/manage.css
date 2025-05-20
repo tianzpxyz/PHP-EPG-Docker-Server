@@ -35,6 +35,7 @@ textarea {
     word-break: break-all; /* 允许单词内断行 */
 }
 
+.table-container::-webkit-resizer, 
 textarea::-webkit-resizer {
     background: url('data:image/svg+xml;utf8,\
     <svg fill="gray" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">\
@@ -298,6 +299,14 @@ input[type="tel"] {
 .table-container[id="channel-match-table-container"] {
     height: 460px;
 }
+
+.table-container[id="live-source-table-container"] {
+    height: 340px;
+    min-height: 340px;
+    margin-bottom: 0px;
+    resize: vertical;
+}
+
 #logTable, #channelMatchTable, #channelTable, 
 #iconTable, #channelBindEPGTable, #liveSourceTable {
     width: 100%;
@@ -305,9 +314,11 @@ input[type="tel"] {
     border-spacing: 0 0px; /* 调整行之间的垂直间距 */
     table-layout: fixed; /* 固定表格布局，防止内容超出 */
 }
+
 #logTable, #liveSourceTable {
     border-spacing: 0 5px; /* 调整行之间的垂直间距 */
 }
+
 #logTable th, #logTable td,
 #channelTable th, #channelTable td,
 #iconTable th, #iconTable td,
@@ -318,6 +329,7 @@ input[type="tel"] {
     padding: 5px;
     word-break: break-all; /* 允许单词内断行 */
 }
+
 #channelTable th, #channelTable td,
 #iconTable th, #iconTable td,
 #channelMatchTable th, #channelMatchTable td,
@@ -325,30 +337,37 @@ input[type="tel"] {
 #liveSourceTable th, #liveSourceTable td {
     text-align: center;
 }
+
 #logTable th:nth-child(1), 
 #logTable td:nth-child(1) {
     width: 10%; /* 第一列宽度 */
     text-align: center;
 }
+
 #logTable th:nth-child(2) {
     text-align: center; /* 第二列表头居中 */
 }
+
 #channelTable th:nth-child(1),
 #channelTable td:nth-child(1) {
     width: 30%; /* 第一列宽度 */
 }
+
 #iconTable th:nth-child(1),
 #iconTable td:nth-child(1) {
     width: 17%; /* 第一列宽度 */
 }
+
 #iconTable th:nth-child(2),
 #iconTable td:nth-child(2) {
     width: 55%; /* 第二列宽度 */
 }
+
 #iconTable th:nth-child(3),
 #iconTable td:nth-child(3) {
     width: 13%; /* 第三列宽度 */
 }
+
 #channelMatchTable th:nth-child(4),
 #channelMatchTable td:nth-child(4) {
     width: 15%; /* 第四列宽度 */

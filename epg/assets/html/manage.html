@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <title>管理配置</title>
+    <title>EPG工具箱</title>
     <link rel="stylesheet" type="text/css" href="assets/css/manage.css">
     <link rel="stylesheet" type="text/css" href="assets/css/fa-5-15-4-all-min.css">
-    <link rel="icon" href="assets/html/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="assets/img/favicon.ico" type="image/x-icon">
 </head>
 <body>
 <script>
@@ -110,18 +110,16 @@
 </div>
 
 <!-- 底部显示 -->
-<div class="footer">
+<div class="footer" style="user-select: none;">
     <a href="https://github.com/taksssss/EPG-Server" target="_blank" style="color: #888; text-decoration: none;">
         https://github.com/taksssss/EPG-Server
     </a>
-    <a onclick="showVersionLog();" style="color: #888; cursor: pointer;">
+    <a onclick="showVersionLog();" style="color: #888;">
         <span id="version">v2024.11.25</span>
         版本日志
     </a>
-    <a onclick="showHelpModal();" style="color: #888; cursor: pointer;">使用说明</a>
-    <a href="https://gitee.com/taksssss/EPG-Server#-buy-me-a-coffee" target="_blank" style="color: #888; text-decoration: none;">
-        ☕捐赠
-    </a>
+    <a onclick="showHelpModal();" style="color: #888;">使用说明</a>
+    <a onclick="showDonationImage()" style="color: #888;">☕捐赠</a>
     <a href="https://gitee.com/taksssss/EPG-Server/blob/main/DONATIONS.md" target="_blank" style="color: #888; text-decoration: none;">
         🌹鸣谢列表
     </a>
@@ -203,7 +201,11 @@
     <div class="modal-content access-log-modal-content">
         <span class="close">&times;</span>
         <h2>访问日志</h2>
-        <p id="accessLogContent" style="height: 445px; overflow: auto;"></p>
+        <p id="accessLogContent" style="height: 402px; overflow: auto;"></p>
+        <div class="button-container">
+            <button type="button" onclick="clearAccessLog()">清空日志</button>
+            <button type="button" onclick="downloadAccessLog()">下载日志</button>
+        </div>
     </div>
 </div>
 
@@ -212,7 +214,7 @@
     <div class="modal-content channel-modal-content">
         <span class="close">&times;</span>
         <h2 id="channelModalTitle">频道列表</h2>
-        <input type="text" id="channelSearchInput" placeholder="搜索频道名..." onkeyup="filterChannels('channel')">
+        <input type="text" id="channelSearchInput" placeholder="搜索频道名..." oninput="filterChannels('channel')">
         <div class="table-container" id="channel-table-container">
             <table id="channelTable">
                 <thead style="position: sticky; top: 0; background-color: white;">
@@ -237,7 +239,7 @@
         <span class="close">&times;</span>
         <h2 id="iconModalTitle">频道列表</h2>
         <div style="display: flex;">
-            <input type="text" id="iconSearchInput" placeholder="搜索频道名..." onkeyup="filterChannels('icon')" style="flex: 1; margin-right: 10px;">
+            <input type="text" id="iconSearchInput" placeholder="搜索频道名..." oninput="filterChannels('icon')" style="flex: 1; margin-right: 10px;">
             <div style="width:auto; margin-right: 10px;">
                 <button id="deleteUnusedIcons" type="button" onclick="deleteUnusedIcons()">清理</button>
             </div>
@@ -339,7 +341,12 @@
             <button id="showMoreLiveSettingBtn" onclick="showModal('morelivesetting')">更多设置</button>
         </div>
         <br>
-        
+
+        <!-- 搜索框 -->
+        <div>
+            <input type="text" id="liveSourceSearchInput" placeholder="搜索频道名、tvg-id、tvg-name、直播地址或分组..." oninput="filterLiveSourceData()">
+        </div>
+
         <!-- 表格显示解析结果 -->
         <div class="table-container" id="live-source-table-container">
             <table id="liveSourceTable">
@@ -375,10 +382,26 @@
                 </tbody>
             </table>
         </div>
-        
-        <!-- 分页控件 -->
-        <div id="paginationContainer" style="margin-top: 15px; text-align: center;">
-            <!-- 分页按钮由 JavaScript 动态生成 -->
+
+        <!-- 分页控件 + 每页条数选择 -->
+        <div style="margin-top: 15px; display: flex; align-items: center;">
+            <!-- 占位块，拉开空间 -->
+            <div style="flex: 1;"></div>
+
+            <!-- 分页控件，居中显示 -->
+            <div id="paginationContainer" style="text-align: center;"></div>
+
+            <!-- 每页条数选择，靠右 -->
+            <div style="flex: 1; text-align: right;">
+                <label for="rowsPerPageSelect">每页显示：</label>
+                <select id="rowsPerPageSelect">
+                    <option value="50">50 条</option>
+                    <option value="100">100 条</option>
+                    <option value="150">150 条</option>
+                    <option value="200">200 条</option>
+                    <option value="500">500 条</option>
+                </select>
+            </div>
         </div>
     </div>
 </div>
@@ -477,8 +500,8 @@
                 <label for="check_speed_interval_factor">间隔周期倍率：</label>
                 <select id="check_speed_interval_factor" name="check_speed_interval_factor" required>
                     <?php for ($i = 1; $i <= 10; $i++): ?>
-                        <option value="<?= $i ?>" <?= ($Config['check_speed_interval_factor'] ?? 1) == $i ? 'selected' : '' ?>>
-                            <?= $i ?>
+                        <option value="<?php echo $i ?>" <?php echo ($Config['check_speed_interval_factor'] ?? 1) == $i ? 'selected' : '' ?>>
+                            <?php echo $i ?>
                         </option>
                     <?php endfor; ?>
                 </select>
@@ -624,10 +647,11 @@
         <!-- 第三行 -->
         <div class="row">
             <div class="column">
-                <label for="all_chs" title="">全转简中：</label>
-                <select id="all_chs" name="all_chs" required>
-                    <option value="1" <?php if (isset($Config['all_chs']) && $Config['all_chs'] == 1) echo 'selected'; ?>>是</option>
-                    <option value="0" <?php if (!isset($Config['all_chs']) || $Config['all_chs'] == 0) echo 'selected'; ?>>否</option>
+                <label for="cht_to_chs" title="">繁體转简体：</label>
+                <select id="cht_to_chs" name="cht_to_chs" required>
+                    <option value="0" <?php echo ($Config['cht_to_chs'] ?? 1) == 0 ? 'selected' : '' ?>>关闭</option>
+                    <option value="1" <?php echo ($Config['cht_to_chs'] ?? 1) == 1 ? 'selected' : '' ?>>仅频道名</option>
+                    <option value="2" <?php echo ($Config['cht_to_chs'] ?? 1) == 2 ? 'selected' : '' ?>>所有信息</option>
                 </select>
             </div>
             <div class="column">
