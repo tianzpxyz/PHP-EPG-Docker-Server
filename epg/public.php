@@ -186,6 +186,8 @@ function downloadData($url, $userAgent = '', $timeout = 30, $connectTimeout = 10
     while ($retry--) {
         $data = curl_exec($ch);
         if (!curl_errno($ch)) break;
+        echo date("[y-m-d H:i:s]") . " 【下载】 失败，5秒后重试...<br>";
+        sleep(5);
     }
     curl_close($ch);
     return $data ?: false;
