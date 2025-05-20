@@ -175,7 +175,8 @@ try {
             'get_update_logs', 'get_cron_logs', 'get_channel', 'get_epg_by_channel',
             'get_icon', 'get_channel_bind_epg', 'get_channel_match', 'get_gen_list',
             'get_live_data', 'parse_source_info', 'download_data', 'delete_unused_icons', 
-            'delete_unused_live_data', 'get_version_log', 'get_readme_content', 'get_access_log'
+            'delete_unused_live_data', 'get_version_log', 'get_readme_content', 'get_access_log',
+            'clear_access_log'
         ];
         $action = key(array_intersect_key($_GET, array_flip($action_map))) ?: '';
 
@@ -503,8 +504,13 @@ try {
             case 'get_access_log':
                 $accesslogFile = 'data/access.log';
                 $accesslogContent = file_exists($accesslogFile) ? file_get_contents($accesslogFile) : '';
-                $htmlContent = '<pre>' . $accesslogContent . '持续刷新中...</pre>';
-                $dbResponse = ['success' => true, 'content' => $htmlContent];
+                $dbResponse = ['success' => true, 'content' => $accesslogContent];
+                break;
+                
+            case 'clear_access_log':
+                $file = 'data/access.log';
+                $res = file_exists($file) && is_writable($file) && file_put_contents($file, '') !== false;
+                $dbResponse = ['success' => $res];
                 break;
 
             default:
