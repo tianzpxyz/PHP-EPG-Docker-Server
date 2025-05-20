@@ -17,7 +17,7 @@ ob_implicit_flush(true);
 header('X-Accel-Buffering: no');
 
 // 显示 favicon
-echo '<link rel="icon" href="assets/html/favicon.ico" type="image/x-icon">';
+echo '<link rel="icon" href="assets/img/favicon.ico" type="image/x-icon">';
 echo '<title>更新数据</title>';
 
 // 引入公共脚本
@@ -36,11 +36,6 @@ function deleteOldData($db, $thresholdDate, &$log_messages) {
         @unlink(__DIR__ . '/t.xml.gz');
         @unlink(__DIR__ . '/data/t.xml');
         @unlink(__DIR__ . '/data/t.xml.gz');
-    }
-
-    // 删除 access.log
-    if (!($Config['debug_mode'] ?? 0)) {
-        @unlink(__DIR__ . '/data/access.log');
     }
 
     // 循环清理过期数据
@@ -144,10 +139,13 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
     global $Config;
     $xml_data = downloadData($xml_url, $userAgent);
     if ($xml_data !== false && stripos($xml_data, 'not found') === false) {
+        $mtimeStr = '';
         if (substr($xml_data, 0, 2) === "\x1F\x8B") { // 通过魔数判断 .gz 文件
-            $xml_data = gzdecode($xml_data);
-            if ($xml_data === false) {
-                logMessage($log_messages, ' 【解压缩失败！！！】');
+            if ($t = unpack('V', substr($xml_data, 4, 4))[1]) {
+                $mtimeStr = ' | 修改时间：' . date('Y-m-d H:i:s', $t);
+            }
+            if (!($xml_data = gzdecode($xml_data))) {
+                logMessage($log_messages, '【解压失败】');
                 return;
             }
         }
@@ -157,10 +155,10 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
         $fileSizeReadable = $fileSize >= 1048576 
             ? round($fileSize / 1048576, 2) . ' MB' 
             : round($fileSize / 1024, 2) . ' KB';
-        logMessage($log_messages, "【下载】 成功：xml 文件 {$fileSizeReadable}");
+        logMessage($log_messages, "【下载】 成功 | xml 文件大小：{$fileSizeReadable}{$mtimeStr}");
 
         $xml_data = mb_convert_encoding($xml_data, 'UTF-8'); // 转换成 UTF-8 编码
-        if ($Config['all_chs'] ?? false) { $xml_data = t2s($xml_data); }
+        if ($Config['cht_to_chs'] ?? 1 === 2) { $xml_data = t2s($xml_data); }
         $db->beginTransaction();
         try {
             $processCount = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list);
@@ -172,7 +170,7 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
         }
     } else {
         logMessage($log_messages, "【下载】 失败！！！");
-    }    
+    }
     echo "<br>";
 }
 
@@ -200,8 +198,8 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
     }
 
     // 繁简转换和频道筛选
-    $simplifiedChannelNames = ($Config['all_chs'] ?? false) ? 
-        $cleanChannelNames : explode("\n", t2s(implode("\n", $cleanChannelNames)));
+    $simplifiedChannelNames = ($Config['cht_to_chs'] ?? 1) === 1 ? 
+        explode("\n", t2s(implode("\n", $cleanChannelNames))) : $cleanChannelNames;
     $channelNamesMap = [];
     foreach ($cleanChannelNames as $channelId => $channelName) {
         $channelNameSimplified = array_shift($simplifiedChannelNames);
