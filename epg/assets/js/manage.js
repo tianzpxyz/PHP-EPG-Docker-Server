@@ -10,12 +10,13 @@ document.addEventListener('DOMContentLoaded', function() {
 document.getElementById('settingsForm').addEventListener('submit', function(event) {
     event.preventDefault();  // 阻止默认表单提交
 
-    const fields = ['update_config', 'gen_xml', 'include_future_only', 'ret_default', 'all_chs', 
+    const fields = ['update_config', 'gen_xml', 'include_future_only', 'ret_default', 'cht_to_chs', 
         'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 'gen_list_enable', 
-        'check_update', 'token_range', 'user_agent_range', 'live_template_enable', 'live_fuzzy_match', 
-        'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 'live_tvg_name_enable', 
-        'check_ipv6', 'min_resolution_width', 'min_resolution_height', 'urls_limit','sort_by_delay', 
-        'check_speed_auto_sync'];
+        'check_update', 'token_range', 'user_agent_range', 'debug_mode', 'live_template_enable', 
+        'live_fuzzy_match', 'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 
+        'live_tvg_name_enable', 'live_source_auto_sync', 'live_channel_name_process', 'gen_live_update_time', 
+        'm3u_icon_first', 'check_ipv6', 'min_resolution_width', 'min_resolution_height', 'urls_limit','sort_by_delay', 
+        'check_speed_auto_sync', 'check_speed_interval_factor'];
 
     // 创建隐藏字段并将其添加到表单
     const form = this;
@@ -248,6 +249,9 @@ function showModal(type, popup = true, data = '') {
         case 'chekspeed':
             modal = document.getElementById("checkSpeedModal");
             break;
+        case 'morelivesetting':
+            modal = document.getElementById("moreLiveSettingModal");
+            break;
         case 'moresetting':
             updateMySQLFields(); // 设置 MySQL 相关输入框状态
             document.getElementById('db_type').addEventListener('change', updateMySQLFields);
@@ -300,8 +304,8 @@ function showExecResult(fileName, callback, fullSize = true) {
 
     const wrapper = document.createElement('div');
     if (fullSize) {
-        wrapper.style.width = '800px';
-        wrapper.style.height = '500px';
+        wrapper.style.width = '930px';
+        wrapper.style.height = '504px';
     } else {
         wrapper.style.maxWidth = '600px';
     }
@@ -359,8 +363,24 @@ function showVersionLog(doCheckUpdate = false) {
 
 // 显示使用说明
 function showHelpModal() {
-    fetch("assets/html/readme.html").then(res => res.text()).then(data => helpContent.innerHTML = data);
-    showModalWithMessage("helpModal");
+    fetch("manage.php?get_readme_content=true")
+        .then(response => response.json())
+        .then(data => {
+            showModalWithMessage("helpModal", "helpMessage", data.content);
+        });
+}
+
+// 显示捐赠图片
+function showDonationImage() {
+    const isDark = document.body.classList.contains('dark');
+    const img = isDark ? 'assets/img/buymeacofee-dark.png' : 'assets/img/buymeacofee.png';
+
+    showMessageModal('');
+    messageModalMessage.innerHTML = `
+        <img src="${img}" style="max-width:100%; display:block; margin: 0 auto; margin-top:55px;">
+        <p style="margin-top:10px; text-align:center;">感谢鼓励！</p>
+    `;
+
 }
 
 // 更新 EPG 内容
@@ -401,6 +421,64 @@ function updateCronLogContent(logData) {
         })}] ${log.log_message}`)
     .join('\n');
     logContent.scrollTop = logContent.scrollHeight;
+}
+
+// 显示访问日志
+function showAccessLogModal() {
+    const box = document.getElementById("accessLogContent");
+    const modal = document.getElementById("accesslogModal");
+    let last = "", timer;
+
+    const load = () => fetch("manage.php?get_access_log=true")
+        .then(r => r.json())
+        .then(d => {
+            logcontent = "<pre>" + d.content + "持续刷新中...</pre>";
+            if (logcontent !== last) {
+                last = logcontent;
+                const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+                box.innerHTML = logcontent;
+                if (atBottom) box.scrollTop = box.scrollHeight;
+            }
+        });
+
+    modal.style.zIndex = zIndex++;
+    modal.style.display = "block";
+    load();
+    timer = setInterval(load, 1000);
+
+    modal.onclick = e => {
+        if (e.target === modal || e.target.classList.contains("close")) {
+            modal.style.display = "none";
+            clearInterval(timer);
+        }
+    };
+}
+
+// 清空访问日志
+function clearAccessLog() {
+    if (!confirm('确定清空访问日志？')) return;
+    fetch('manage.php?clear_access_log=true')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert('日志已清空');
+                document.getElementById('accessLogContent').innerHTML = '';
+            } else alert('清空失败');
+        }).catch(() => alert('请求失败'));
+}
+
+// 下载访问日志
+function downloadAccessLog() {
+    fetch('manage.php?get_access_log=true')
+        .then(res => res.json())
+        .then(data => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([data.content], {type:'text/plain'}));
+            a.download = 'access.log';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        })
+        .catch(() => alert('下载失败'));
 }
 
 // 显示频道别名列表
@@ -537,10 +615,11 @@ function displayPage(data, page) {
         // 为每个单元格添加事件监听器
         row.querySelectorAll('td[contenteditable="true"]').forEach((cell, columnIndex) => {
             cell.addEventListener('input', () => {
-                const dataIndex = (currentPage - 1) * rowsPerPage + index;
+                const currentIndex = (currentPage - 1) * rowsPerPage + index;
+                const item = filteredLiveData[currentIndex]; // 当前点击的数据
+                const dataIndex = allLiveData.findIndex(d => d.tag === item.tag);
                 if (dataIndex < allLiveData.length) {
                     allLiveData[dataIndex][columns[columnIndex]] = cell.textContent.trim();
-                    
                     allLiveData[dataIndex]['modified'] = 1; // 标记修改位
                     const lastCell = cell.closest('tr').lastElementChild;
                     lastCell.textContent = '是';
@@ -552,7 +631,9 @@ function displayPage(data, page) {
         // 为 disable 和 modified 列添加点击事件，切换 "是/否"
         row.querySelectorAll('td.table-cell-clickable').forEach((cell, columnIndex) => {
             cell.addEventListener('click', () => {
-                const dataIndex = (currentPage - 1) * rowsPerPage + index;
+                const currentIndex = (currentPage - 1) * rowsPerPage + index;
+                const item = filteredLiveData[currentIndex]; // 当前点击的数据
+                const dataIndex = allLiveData.findIndex(d => d.tag === item.tag);
                 if (dataIndex < allLiveData.length) {
                     const isDisable = columnIndex === 0;
                     const field = isDisable ? 'disable' : 'modified';
@@ -583,7 +664,6 @@ function setupPagination(data) {
     paginationContainer.innerHTML = ''; // 清空分页容器
 
     const totalPages = Math.ceil(data.length / rowsPerPage);
-    document.getElementById('live-source-table-container').style.height = totalPages <= 1 ? "410px" : "375px";
     if (totalPages <= 1) return;
 
     const maxButtons = 11; // 总显示按钮数，包括“<”和“>”
@@ -626,8 +706,35 @@ function setupPagination(data) {
 }
 
 let currentPage = 1; // 当前页码
-const rowsPerPage = 100; // 每页显示的行数
 let allLiveData = []; // 用于存储直播源数据
+let filteredLiveData = []; // 搜索后的结果
+
+let rowsPerPage = parseInt(localStorage.getItem('rowsPerPage')) || 100; // 每页显示的行数
+document.getElementById('rowsPerPageSelect').value = rowsPerPage;
+
+// 更改每页显示条数
+document.getElementById('rowsPerPageSelect').addEventListener('change', (e) => {
+    rowsPerPage = parseInt(e.target.value);
+    localStorage.setItem('rowsPerPage', rowsPerPage);
+    currentPage = 1; // 重置到第一页
+    displayPage(filteredLiveData, currentPage);
+    setupPagination(filteredLiveData);
+});
+
+// 根据关键词过滤数据
+function filterLiveSourceData() {
+    const keyword = document.getElementById('liveSourceSearchInput').value.trim().toLowerCase();
+    filteredLiveData = allLiveData.filter(item =>
+        (item.channelName || '').toLowerCase().includes(keyword) ||
+        (item.groupTitle || '').toLowerCase().includes(keyword) ||
+        (item.streamUrl || '').toLowerCase().includes(keyword) ||
+        (item.tvgId || '').toLowerCase().includes(keyword) ||
+        (item.tvgName || '').toLowerCase().includes(keyword)
+    );
+    currentPage = 1;
+    displayPage(filteredLiveData, currentPage);
+    setupPagination(filteredLiveData);
+}
 
 // 更新模态框内容并初始化分页
 function updateLiveSourceModal(data) {
@@ -635,6 +742,7 @@ function updateLiveSourceModal(data) {
     document.getElementById('liveTemplateTextarea').value = data.template_content || '';
     const channels = Array.isArray(data.channels) ? data.channels : [];
     allLiveData = channels;  // 将所有数据保存在全局变量中
+    filteredLiveData = allLiveData; // 初始化过滤结果
     currentPage = 1; // 重置为第一页
     displayPage(channels, currentPage); // 显示第一页数据
     setupPagination(channels); // 初始化分页控件
@@ -670,23 +778,6 @@ document.getElementById('liveSourceFile').addEventListener('change', function() 
     this.value = ''; // 重置文件输入框的值，确保可以连续上传相同文件
 });
 
-// 设置直播源自动同步、优化频道名开关
-function toggleStatus(toggleBtn) {
-    fetch(`manage.php?toggle_status=true&toggle_button=${toggleBtn}`)
-        .then(response => response.json())
-        .then(data => {
-            // 更新按钮显示
-            document.getElementById(toggleBtn).innerHTML = 
-                `${toggleBtn === "toggleLiveSourceSyncBtn" ? "同步更新"
-                 : toggleBtn === "toggleCheckSpeedSyncBtn" ? "同步测速"
-                 : toggleBtn === "toggleLiveChannelNameProcessBtn" ? "频道更名" : "Error"}: ${data.status === 1 ? "是" : "否"}`;
-            const syncStatus = document.getElementById("toggleLiveSourceSyncBtn").innerHTML;
-            const processStatus = document.getElementById("toggleLiveChannelNameProcessBtn").innerHTML;
-            document.getElementById('showMoreLiveSettingBtn').setAttribute('onclick', `showMoreLiveSetting('${syncStatus}', '${processStatus}')`);
-        })
-        .catch(error => console.error("Error:", error));
-}
-
 // 保存编辑后的直播源地址
 function saveLiveSourceFile() {
     source = document.getElementById('sourceUrlTextarea');
@@ -709,18 +800,6 @@ function saveLiveSourceFile() {
 }
 
 document.getElementById('sourceUrlTextarea').addEventListener('blur', saveLiveSourceFile);
-
-// 显示更多直播源设置
-function showMoreLiveSetting(sourceSync, nameProcess) {
-    showMessageModal('');
-    document.getElementById('messageModalMessage').innerHTML = `
-        <div class="button-container" style="width: 400px; margin-top: 30px;">
-            <button id="toggleLiveSourceSyncBtn" onclick="toggleStatus('toggleLiveSourceSyncBtn')">${sourceSync}</button>
-            <button id="toggleLiveChannelNameProcessBtn" onclick="toggleStatus('toggleLiveChannelNameProcessBtn')">${nameProcess}</button>
-            <button id="cleanUnusedSourceBtn" onclick="cleanUnusedSource()">清理数据</button>
-        </div>
-    `;
-}
 
 // 保存编辑后的直播源信息
 function saveLiveSourceInfo(popup = true, filePath = '') {
@@ -783,6 +862,7 @@ function saveLiveSourceInfoAs() {
             .getAttribute('onclick')
             .match(/\`(.*?)\`/g)
             .map(s => s.slice(1, -1));
+        token = token.split(',')[0];
         var tokenStr = (tokenRange == 1 || tokenRange == 3) ? `token=${token}&` : '';
         var m3uUrl = `${serverUrl}/index.php?${tokenStr}live=m3u&url=${fileName}`;
         var txtUrl = `${serverUrl}/index.php?${tokenStr}live=txt&url=${fileName}`;
@@ -1171,6 +1251,8 @@ function parseSourceInfo(message = '') {
         }
     })
     .catch(error => showMessageModal('解析过程中发生错误：' + error));
+
+    document.getElementById('liveSourceSearchInput').value = ''; // 清空搜索框内容
 }
 
 // 保存限定频道列表
@@ -1305,6 +1387,7 @@ function updateTokenUA(type) {
 function showTokenRangeMessage(token, serverUrl) {
     var tokenRange = document.getElementById("token_range").value;
     var message = '';
+    token = token.split(',')[0];
     var baseUrl = serverUrl + '/index.php?token=' + token;
     if (tokenRange == "1" || tokenRange == "3") {
         message += `直播源地址：<br><a href="${baseUrl}&live=m3u" target="_blank">${baseUrl}&live=m3u</a><br>
@@ -1319,6 +1402,12 @@ function showTokenRangeMessage(token, serverUrl) {
     }
     document.getElementById('showLiveUrlBtn').setAttribute('onclick', `showLiveUrl('${token}', '${serverUrl}', '${tokenRange}')`);
 }
+
+// 监听 debug_mode 更变
+document.getElementById("debug_mode").addEventListener("change", function () {
+    const show = this.value === "1";
+    document.getElementById("accessLogBtn").style.display = show ? "inline-block" : "none";
+});
 
 // 切换主题
 document.getElementById('themeSwitcher').addEventListener('click', function() {

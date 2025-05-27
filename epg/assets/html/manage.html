@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <title>管理配置</title>
+    <title>EPG工具箱</title>
     <link rel="stylesheet" type="text/css" href="assets/css/manage.css">
     <link rel="stylesheet" type="text/css" href="assets/css/fa-5-15-4-all-min.css">
-    <link rel="icon" href="assets/html/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="assets/img/favicon.ico" type="image/x-icon">
 </head>
 <body>
 <script>
@@ -38,7 +38,7 @@
         <label for="xml_urls">【EPG地址】</label>
         <span class="blue-span" id="channelbind" onclick="showModal('channelbindepg')">（频道指定源）</span>
         <br><br>
-        <textarea id="xml_urls" name="xml_urls" style="height: 122px;"><?php echo implode("\n", array_map('trim', $Config['xml_urls'])); ?></textarea>
+        <textarea id="xml_urls" name="xml_urls"><?php echo implode("\n", array_map('trim', $Config['xml_urls'])); ?></textarea>
         <br><br>
 
         <div class="form-row">
@@ -83,7 +83,7 @@
                 <span class="blue-span" id="iconInfo" onclick="showModal('icon')">（台标管理）</span>
                 <span class="blue-span" id="liveInfo" onclick="showModal('live')">（直播源管理）</span>
                 <br><br>
-                <textarea id="channel_mappings" name="channel_mappings" style="height: 142px;"><?php 
+                <textarea id="channel_mappings" name="channel_mappings"><?php 
                     echo implode("\n", array_map(function($search, $replace) {
                         return $search . ' => ' . $replace;
                     }, array_keys($Config['channel_mappings']), $Config['channel_mappings']));
@@ -99,6 +99,10 @@
             <a href="assets/tinyfilemanager/index.php" target="_blank">管理文件</a>
             <button type="button" onclick="showModal('cron')">定时日志</button>
             <button type="button" onclick="showModal('update')">更新日志</button>
+            <button type="button" id="accessLogBtn" onclick="showAccessLogModal()" 
+                style="display: <?php echo (isset($Config['debug_mode']) && $Config['debug_mode'] == 1) ? 'inline-block' : 'none'; ?>;">
+                访问日志
+            </button>
             <button type="button" onclick="showModal('moresetting')">更多设置</button>
             <button type="button" name="logoutbtn" onclick="logout()">退出</button>
         </div>
@@ -106,17 +110,18 @@
 </div>
 
 <!-- 底部显示 -->
-<div class="footer">
+<div class="footer" style="user-select: none;">
     <a href="https://github.com/taksssss/EPG-Server" target="_blank" style="color: #888; text-decoration: none;">
         https://github.com/taksssss/EPG-Server
     </a>
-    <a onclick="showVersionLog();" style="color: #888; cursor: pointer;">
+    <a onclick="showVersionLog();" style="color: #888;">
         <span id="version">v2024.11.25</span>
         版本日志
     </a>
-    <a onclick="showHelpModal();" style="color: #888; cursor: pointer;">使用说明</a>
-    <a href="https://gitee.com/taksssss/EPG-Server#-buy-me-a-coffee" target="_blank" style="color: #888; text-decoration: none;">
-        ☕捐赠
+    <a onclick="showHelpModal();" style="color: #888;">使用说明</a>
+    <a onclick="showDonationImage()" style="color: #888;">☕捐赠</a>
+    <a href="https://gitee.com/taksssss/EPG-Server/blob/main/DONATIONS.md" target="_blank" style="color: #888; text-decoration: none;">
+        🌹鸣谢列表
     </a>
 </div>
 
@@ -133,7 +138,7 @@
     <div class="modal-content version-update-modal-content">
         <span class="close">&times;</span>
         <h2>版本日志</h2>
-        <p id="versionLogMessage" style="height: 455px; overflow: auto;"></p>
+        <p id="versionLogMessage" style="height: 445px; overflow: auto;"></p>
     </div>
 </div>
 
@@ -142,7 +147,7 @@
     <div class="modal-content help-modal-content">
         <span class="close">&times;</span>
         <h2>使用说明</h2>
-        <div id="helpContent"></div>
+        <p id="helpMessage" style="height: 445px; overflow: auto;"></p>
     </div>
 </div>
 
@@ -187,7 +192,20 @@
     <div class="modal-content cron-log-modal-content">
         <span class="close">&times;</span>
         <h2>定时任务日志</h2>
-        <textarea id="cronLogContent" readonly style="width: 100%; height: 460px;"></textarea>
+        <textarea id="cronLogContent" readonly style="height: 458px; resize: none;"></textarea>
+    </div>
+</div>
+
+<!-- 访问日志模态框 -->
+<div id="accesslogModal" class="modal">
+    <div class="modal-content access-log-modal-content">
+        <span class="close">&times;</span>
+        <h2>访问日志</h2>
+        <p id="accessLogContent" style="height: 402px; overflow: auto;"></p>
+        <div class="button-container">
+            <button type="button" onclick="clearAccessLog()">清空日志</button>
+            <button type="button" onclick="downloadAccessLog()">下载日志</button>
+        </div>
     </div>
 </div>
 
@@ -196,7 +214,7 @@
     <div class="modal-content channel-modal-content">
         <span class="close">&times;</span>
         <h2 id="channelModalTitle">频道列表</h2>
-        <input type="text" id="channelSearchInput" placeholder="搜索频道名..." onkeyup="filterChannels('channel')">
+        <input type="text" id="channelSearchInput" placeholder="搜索频道名..." oninput="filterChannels('channel')">
         <div class="table-container" id="channel-table-container">
             <table id="channelTable">
                 <thead style="position: sticky; top: 0; background-color: white;">
@@ -221,7 +239,7 @@
         <span class="close">&times;</span>
         <h2 id="iconModalTitle">频道列表</h2>
         <div style="display: flex;">
-            <input type="text" id="iconSearchInput" placeholder="搜索频道名..." onkeyup="filterChannels('icon')" style="flex: 1; margin-right: 10px;">
+            <input type="text" id="iconSearchInput" placeholder="搜索频道名..." oninput="filterChannels('icon')" style="flex: 1; margin-right: 10px;">
             <div style="width:auto; margin-right: 10px;">
                 <button id="deleteUnusedIcons" type="button" onclick="deleteUnusedIcons()">清理</button>
             </div>
@@ -306,7 +324,7 @@
         <!-- 输入框使用 textarea 用于输入直播源 URL -->
         <div class="input-container">
             <label for="sourceUrlTextarea">【直播源地址】</label><br>
-            <textarea id="sourceUrlTextarea" style="height: 102px;"></textarea>
+            <textarea id="sourceUrlTextarea"></textarea>
         </div>
         <br>
         
@@ -320,11 +338,15 @@
             <button id="checkSourceBtn" onclick="showModal('chekspeed')">测速校验</button>
             <button id="saveSourceBtn" onclick="saveLiveSourceInfo()">保存</button>
             <button id="saveSourceAsBtn" onclick="saveLiveSourceInfoAs()">另存为</button>
-            <button id="showMoreLiveSettingBtn" onclick="showMoreLiveSetting(`<?php echo (@$Config['live_source_auto_sync'] == 1 ? '同步更新: 是' : '同步更新: 否'); ?>`, 
-                                                        `<?php echo (@$Config['live_channel_name_process'] == 1 ? '频道更名: 是' : '频道更名: 否'); ?>`)">更多设置</button>
+            <button id="showMoreLiveSettingBtn" onclick="showModal('morelivesetting')">更多设置</button>
         </div>
         <br>
-        
+
+        <!-- 搜索框 -->
+        <div>
+            <input type="text" id="liveSourceSearchInput" placeholder="搜索频道名、tvg-id、tvg-name、直播地址或分组..." oninput="filterLiveSourceData()">
+        </div>
+
         <!-- 表格显示解析结果 -->
         <div class="table-container" id="live-source-table-container">
             <table id="liveSourceTable">
@@ -360,10 +382,26 @@
                 </tbody>
             </table>
         </div>
-        
-        <!-- 分页控件 -->
-        <div id="paginationContainer" style="margin-top: 15px; text-align: center;">
-            <!-- 分页按钮由 JavaScript 动态生成 -->
+
+        <!-- 分页控件 + 每页条数选择 -->
+        <div style="margin-top: 15px; display: flex; align-items: center;">
+            <!-- 占位块，拉开空间 -->
+            <div style="flex: 1;"></div>
+
+            <!-- 分页控件，居中显示 -->
+            <div id="paginationContainer" style="text-align: center;"></div>
+
+            <!-- 每页条数选择，靠右 -->
+            <div style="flex: 1; text-align: right;">
+                <label for="rowsPerPageSelect">每页显示：</label>
+                <select id="rowsPerPageSelect">
+                    <option value="50">50 条</option>
+                    <option value="100">100 条</option>
+                    <option value="150">150 条</option>
+                    <option value="200">200 条</option>
+                    <option value="500">500 条</option>
+                </select>
+            </div>
         </div>
     </div>
 </div>
@@ -405,7 +443,6 @@
         <button id="saveConfig" type="button" onclick="saveLiveTemplate();">保存配置</button>
     </div>
 </div>
-
 
 <!-- 测速校验模态框 -->
 <div id="checkSpeedModal" class="modal">
@@ -460,7 +497,15 @@
                 </select>
             </div>
             <div class="column">
-            </div>
+                <label for="check_speed_interval_factor">间隔周期倍率：</label>
+                <select id="check_speed_interval_factor" name="check_speed_interval_factor" required>
+                    <?php for ($i = 1; $i <= 10; $i++): ?>
+                        <option value="<?php echo $i ?>" <?php echo ($Config['check_speed_interval_factor'] ?? 1) == $i ? 'selected' : '' ?>>
+                            <?php echo $i ?>
+                        </option>
+                    <?php endfor; ?>
+                </select>
+            </div>            
         </div>
 
         <!-- 第三行 -->
@@ -473,6 +518,63 @@
             </div>
             <div class="column">
                 <button id="cleanCheckResultBtn" onclick="showExecResult('check.php?cleanMode=true', () => showModal('live', popup = false), fullSize = false)">清除结果</button>
+            </div>
+            <div class="column">
+                <button id="saveConfig" onclick="updateConfig()">保存配置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 直播源管理更多设置模态框 -->
+<div id="moreLiveSettingModal" class="modal">
+    <div class="modal-content more-live-setting-modal-content">
+        <span class="close">&times;</span>
+        <h2>更多设置</h2>
+        <!-- 第一行 -->
+        <div class="row">
+            <div class="column">
+                <label for="live_source_auto_sync">跟随 EPG 同步更新：</label>
+                <select id="live_source_auto_sync" name="live_source_auto_sync" required>
+                    <option value="1" <?php if (@$Config['live_source_auto_sync'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['live_source_auto_sync'] == 0) echo 'selected'; ?>>否</option>
+                </select>
+            </div>
+            <div class="column">
+                <label for="live_channel_name_process">优化频道名称：</label>
+                <select id="live_channel_name_process" name="live_channel_name_process" required>
+                    <option value="1" <?php if (@$Config['live_channel_name_process'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['live_channel_name_process'] == 0) echo 'selected'; ?>>否</option>
+                </select>
+            </div>
+            <div class="column">
+                <label for="gen_live_update_time">生成更新时间：</label>
+                <select id="gen_live_update_time" name="gen_live_update_time" required>
+                    <option value="1" <?php if (@$Config['gen_live_update_time'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['gen_live_update_time'] == 0) echo 'selected'; ?>>否</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 第二行 -->
+        <div class="row" style="margin-top: 25px; margin-bottom: 0px;">
+            <div class="column">
+                <label for="m3u_icon_first">优先读取 M3U 台标：</label>
+                <select id="m3u_icon_first" name="m3u_icon_first" required>
+                    <option value="1" <?php if (@$Config['m3u_icon_first'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['m3u_icon_first'] == 0) echo 'selected'; ?>>否</option>
+                </select>
+            </div>
+            <div class="column">
+            </div>
+            <div class="column">
+            </div>
+        </div>
+
+        <!-- 第三行 -->
+        <div class="row" style="margin-top: 25px; margin-bottom: 0px;">
+            <div class="column">
+                <button id="cleanUnusedSourceBtn" onclick="cleanUnusedSource()">清理缓存数据</button>
             </div>
             <div class="column">
                 <button id="saveConfig" onclick="updateConfig()">保存配置</button>
@@ -545,10 +647,11 @@
         <!-- 第三行 -->
         <div class="row">
             <div class="column">
-                <label for="all_chs" title="">全转简中：</label>
-                <select id="all_chs" name="all_chs" required>
-                    <option value="1" <?php if (isset($Config['all_chs']) && $Config['all_chs'] == 1) echo 'selected'; ?>>是</option>
-                    <option value="0" <?php if (!isset($Config['all_chs']) || $Config['all_chs'] == 0) echo 'selected'; ?>>否</option>
+                <label for="cht_to_chs" title="">繁體转简体：</label>
+                <select id="cht_to_chs" name="cht_to_chs" required>
+                    <option value="0" <?php echo ($Config['cht_to_chs'] ?? 1) == 0 ? 'selected' : '' ?>>关闭</option>
+                    <option value="1" <?php echo ($Config['cht_to_chs'] ?? 1) == 1 ? 'selected' : '' ?>>仅频道名</option>
+                    <option value="2" <?php echo ($Config['cht_to_chs'] ?? 1) == 2 ? 'selected' : '' ?>>所有信息</option>
                 </select>
             </div>
             <div class="column">
@@ -590,6 +693,11 @@
                 </select>
             </div>
             <div class="column">
+                <label for="debug_mode">调试模式：</label>
+                <select id="debug_mode" name="debug_mode" required>
+                    <option value="1" <?php if (isset($Config['debug_mode']) && $Config['debug_mode'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (!isset($Config['debug_mode']) || $Config['debug_mode'] == 0) echo 'selected'; ?>>否</option>
+                </select>
             </div>
             <div class="column">
             </div>

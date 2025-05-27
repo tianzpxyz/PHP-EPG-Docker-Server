@@ -30,7 +30,7 @@ $live = $query_params['live'] ?? '';
 if ($tokenRange !== 0) {
     $allowedTokens = array_map('trim', explode(',', $Config['token'] ?? ''));
     $token = $query_params['token'] ?? '';
-    if (!in_array($token, $allowedTokens) &&  (($tokenRange !== 2 && $live) || 
+    if (!in_array($token, $allowedTokens) && (($tokenRange !== 2 && $live) || 
         ($tokenRange !== 1 && !$live))) {
         http_response_code(403);
         echo '访问被拒绝：无效的 Token。';
@@ -49,6 +49,18 @@ if ($userAgentRange !== 0) {
         echo '访问被拒绝：无效的 User-Agent。';
         exit;
     }
+}
+
+// 记录访问日志
+if ($Config['debug_mode'] ?? 0) {
+    $logFile = __DIR__ . '/data/access.log';
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $time = date('Y-m-d H:i:s');
+    $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+    $url = rawurldecode($_SERVER['REQUEST_URI'] ?? 'unknown');
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    $logEntry = "[$time] [$ip] [$method] $url | UA: $userAgent\n";
+    file_put_contents($logFile, $logEntry, FILE_APPEND);
 }
 
 // 禁止输出错误提示
@@ -147,13 +159,14 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
 
     // 在解码和添加 icon 后再编码为 JSON
     $rowArray = json_decode($row, true);
-    $iconUrl = iconUrlMatch($rowArray['channel_name']) ?? iconUrlMatch($cleanChannelName) ?? iconUrlMatch($oriChannelName);
+    unset($rowArray['source']); // 移除 source 字段
+    $iconUrl = iconUrlMatch($cleanChannelName) ?? iconUrlMatch($oriChannelName);
     $rowArray = array_merge(
-        array_slice($rowArray, 0, array_search('source', array_keys($rowArray)) + 1),
+        array_slice($rowArray, 0, array_search('url', array_keys($rowArray)) + 1),
         ['icon' => $iconUrl],
-        array_slice($rowArray, array_search('source', array_keys($rowArray)) + 1)
+        array_slice($rowArray, array_search('url', array_keys($rowArray)) + 1)
     );
-    $row = json_encode($rowArray, JSON_UNESCAPED_UNICODE);
+    $row = json_encode($rowArray, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
     if ($type === 'diyp') {
         // 如果 Memcached 可用，将结果存储到缓存中
@@ -191,13 +204,12 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
                 'liveSt' => $current_programme ? $current_programme['st'] : 0,
                 'channelName' => $diyp_data['channel_name'],
                 'lvUrl' => $diyp_data['url'],
-                'srcUrl' => $diyp_data['source'],
                 'icon' => $diyp_data['icon'],
                 'program' => $program
             ]
         ];
 
-        $response = json_encode($lovetv_data, JSON_UNESCAPED_UNICODE);
+        $response = json_encode($lovetv_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
         // 如果 Memcached 可用，将结果存储到缓存中
         if ($memcached_enabled) {
@@ -299,7 +311,7 @@ function fetchHandler($query_params) {
         }
 
         // 无法获取到数据时返回默认数据
-        $ret_default = !isset($Config['ret_default']) || $Config['ret_default'];
+        $ret_default = $Config['ret_default'] ?? true;
         $iconUrl = iconUrlMatch($cleanChannelName) ?? iconUrlMatch($oriChannelName);
         if ($type === 'diyp') {
             // 返回默认 diyp 数据
