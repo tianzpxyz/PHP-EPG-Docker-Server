@@ -51,6 +51,22 @@ function deleteOldData($db, $thresholdDate, &$log_messages) {
         $stmt->execute();
         logMessage($log_messages, "【{$logMessage}】 共 {$stmt->rowCount()} 条。");
     }
+
+    // 清理访问日志
+    if ($Config['debug_mode'] && file_exists($accessLogPath = __DIR__ . '/data/access.log')) {
+        $lines = file($accessLogPath);
+        $thresholdTimestamp = strtotime($thresholdDate . ' 00:00:00');
+        $start = 0;
+        foreach ($lines as $i => $line) {
+            if (preg_match('/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/', $line, $m) && strtotime($m[1]) >= $thresholdTimestamp) {
+                $start = $i;
+                break;
+            }
+        }
+        $newLines = array_slice($lines, $start);
+        file_put_contents($accessLogPath, implode('', $newLines));
+        logMessage($log_messages, "【清理访问日志】 共 " . (count($lines) - count($newLines)) . " 条。");
+    }
     
     // 清理 memcached 数据
     if (class_exists('Memcached') && ($memcached = new Memcached())->addServer('localhost', 11211)) {
@@ -267,7 +283,6 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
                 'start' => $startTime,
                 'end' => $startDate === $endDate ? $endTime : '00:00',
                 'title' => (string)$programme->title,
-                'sub-title' => isset($programme->{'sub-title'}) ? (string)$programme->{'sub-title'} : '',
                 'desc' => isset($programme->desc) ? (string)$programme->desc : ''
             ];
     
@@ -279,7 +294,6 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
                     'start' => '00:00',
                     'end' => $endTime,
                     'title' => $programmeData['title'],
-                    'sub-title' => $programmeData['sub-title'],
                     'desc' => $programmeData['desc']
                 ];
             }
@@ -330,7 +344,6 @@ function processIconListAndXmltv($db, $gen_list_mapping, &$log_messages) {
 
         if ($iconUrl) {
             $iconList[strtoupper($channelName)] = $iconUrl;
-            $program['icon'] = $iconUrl;
         }
 
         // gen_list_enable 为 0 或存在映射，则处理频道数据
@@ -370,10 +383,6 @@ function processIconListAndXmltv($db, $gen_list_mapping, &$log_messages) {
 
     // 逐个频道处理
     foreach ($channelData as $channelName => $programs) {
-        // 写入频道信息
-        $xmlWriter->startElement('channel');
-        $xmlWriter->writeAttribute('id', htmlspecialchars($channelName, ENT_XML1, 'UTF-8'));
-
         // 为该频道生成多个 display-name ，包括原频道名、限定频道列表、频道别名
         $displayNames = array_unique(array_merge(
             [$channelName],
@@ -381,13 +390,14 @@ function processIconListAndXmltv($db, $gen_list_mapping, &$log_messages) {
             $channelMappings[$channelName] ?? []
         ));
         foreach ($displayNames as $displayName) {
+            $xmlWriter->startElement('channel');
+            $xmlWriter->writeAttribute('id', htmlspecialchars($channelName, ENT_XML1, 'UTF-8'));
             $xmlWriter->startElement('display-name');
             $xmlWriter->writeAttribute('lang', 'zh');
             $xmlWriter->text($displayName);
             $xmlWriter->endElement(); // display-name
+            $xmlWriter->endElement(); // channel
         }
-        
-        $xmlWriter->endElement(); // channel
 
         // 写入该频道的所有节目数据
         foreach ($programs as $programIndex => &$program) {
@@ -533,7 +543,7 @@ foreach ($Config['xml_urls'] as $xml_url) {
         if (stripos($part, 'UA=') === 0 || stripos($part, 'useragent=') === 0) {
             $userAgent = substr($part, strpos($part, '=') + 1);
         } elseif (stripos($part, 'FT=') === 0 || stripos($part, 'filter=') === 0) {
-            $filter_raw = t2s(trim(substr($part, strpos($part, '=') + 1)));
+            $filter_raw = strtoupper(t2s(trim(substr($part, strpos($part, '=') + 1))));
             $list = array_map('trim', explode(',', ltrim($filter_raw, '!')));
             if (strpos($filter_raw, '!') === 0) {
                 $black_list = $list;
