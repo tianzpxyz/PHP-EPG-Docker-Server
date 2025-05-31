@@ -6,11 +6,12 @@
     "channel_mappings": {
         "CCTV$1": "regex:\/^CCTV[-\\s]*(\\d{1,2}(\\s*P(LUS)?|[K\\+])?)(?![\\s-]*(美洲|欧洲)).*\/i"
     },
+    "channel_ignore_chars": "&nbsp, -",
     "channel_bind_epg": [],
     "gen_xml": 1,
     "include_future_only": 1,
     "ret_default": 0,
-    "cht_to_chs": 0,
+    "cht_to_chs": 1,
     "db_type": "sqlite",
     "gen_list_enable": 0,
     "interval_time": 21600,
@@ -41,6 +42,7 @@
     "user_agent": "",
     "user_agent_range": 0,
     "default_icon": "",
+    "ip_list_mode": 0,
     "check_update": 1,
     "debug_mode": 0,
     "manage_password": ""
