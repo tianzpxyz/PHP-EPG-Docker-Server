@@ -30,11 +30,10 @@ $host = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '';
 $scriptDir = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/');
 $serverUrl = $protocol . '://' . $host . $scriptDir;
 
-// 建立 xmltv 软链接
-if ($Config['gen_xml'] && file_exists($xmlFilePath = __DIR__ . '/data/t.xml')
-    && !file_exists($xmlLinkPath = __DIR__ . '/t.xml')) {
-    symlink($xmlFilePath, $xmlLinkPath);
-    symlink($xmlFilePath . '.gz', $xmlLinkPath . '.gz');
+// 移除 xmltv 软链接
+if (file_exists($xmlLinkPath = __DIR__ . '/t.xml')) {
+    unlink($xmlLinkPath);
+    unlink($xmlLinkPath . ".gz");
 }
 
 // 设置时区为亚洲/上海
@@ -88,13 +87,18 @@ function initialDB() {
 }
 
 // 获取处理后的频道名：$t2s参数表示繁简转换，默认false
-function cleanChannelName($channel, $t2s = false) {
+function cleanChannelName($channel, $t2s = false, $channel_alt = '') {
     global $Config;
     $channel_ori = $channel;
     
-    // 默认忽略 - 跟 空格
-    $channel_replacements = ['-', ' '];
-    $channel = str_replace($channel_replacements, '', $channel);
+    // 频道忽略字符，默认空格跟 -
+    $chars = array_map('trim', explode(',', $Config['channel_ignore_chars'] ?? "&nbsp, -"));
+    $ignore_chars = str_replace('&nbsp', ' ', $chars);
+
+    $strip = function ($str) use ($ignore_chars) { return str_replace($ignore_chars, '', $str); };
+    $channel = $strip($channel);
+    $channel_alt = $strip($channel_alt);
+    $targets = array_filter([$channel, $channel_alt]);
 
     // 频道映射，优先级最高，支持正则表达式和多对一映射
     foreach ($Config['channel_mappings'] as $replace => $search) {
@@ -107,8 +111,11 @@ function cleanChannelName($channel, $t2s = false) {
             // 普通映射，可能为多对一
             $channels = array_map('trim', explode(',', $search));
             foreach ($channels as $singleChannel) {
-                if (strcasecmp($channel, str_replace($channel_replacements, '', $singleChannel)) === 0) {
-                    return strtoupper($replace);
+                $single_clean = $strip($singleChannel);
+                foreach ($targets as $target) {
+                    if (strcasecmp($target, $single_clean) === 0) {
+                        return strtoupper($replace);
+                    }
                 }
             }
         }
@@ -167,7 +174,7 @@ function iconUrlMatch($originalChannel, $getDefault = true, $getFullUrl = true) 
 }
 
 // 下载文件
-function downloadData($url, $userAgent = '', $timeout = 30, $connectTimeout = 10, $retry = 3) {
+function downloadData($url, $userAgent = '', $timeout = 120, $connectTimeout = 10, $retry = 3) {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_SSL_VERIFYPEER => 0,
@@ -453,7 +460,7 @@ function doParseSourceInfo($urlLine = null) {
             } elseif (stripos($part, 'RP=') === 0 || stripos($part, 'replace=') === 0) {
                 $replacePattern = trim(substr($part, strpos($part, '=') + 1));
             } elseif (stripos($part, 'FT=') === 0 || stripos($part, 'filter=') === 0) {
-                $filter_raw = t2s(trim(substr($part, strpos($part, '=') + 1)));
+                $filter_raw = strtoupper(t2s(trim(substr($part, strpos($part, '=') + 1))));
                 $list = array_map('trim', explode(',', ltrim($filter_raw, '!')));
                 if (strpos($filter_raw, '!') === 0) {
                     $black_list = $list;
@@ -582,10 +589,10 @@ function doParseSourceInfo($urlLine = null) {
             $chsChannelName = $chsChannelNames[$index];
             $streamUrl = $row['streamUrl'];
             $in_white = empty($white_list) || array_filter($white_list, function ($w) use ($chsChannelName, $streamUrl) {
-                return strpos($chsChannelName, $w) !== false || strpos($streamUrl, $w) !== false;
+                return stripos($chsChannelName, $w) !== false || stripos($streamUrl, $w) !== false;
             });
             $in_black = array_filter($black_list, function ($b) use ($chsChannelName, $streamUrl) {
-                return strpos($chsChannelName, $b) !== false || strpos($streamUrl, $b) !== false;
+                return stripos($chsChannelName, $b) !== false || stripos($streamUrl, $b) !== false;
             });
             if (!$in_white || $in_black) {
                 unset($urlChannelData[$index]);
@@ -599,7 +606,7 @@ function doParseSourceInfo($urlLine = null) {
             }
 
             // 更新部分信息
-            $cleanChannelName = cleanChannelName($chsChannelName);
+            $cleanChannelName = cleanChannelName($chsChannelName, $t2s = false, $row['channelName']);
             $dbChannelName = dbChannelNameMatch($cleanChannelName);
             $finalChannelName = $dbChannelName ?: $cleanChannelName;
             $row['channelName'] = $liveChannelNameProcess ? $finalChannelName : $row['channelName'];
