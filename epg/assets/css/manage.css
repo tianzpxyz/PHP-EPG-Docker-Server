@@ -153,7 +153,8 @@ a:hover, .blue-span:hover {
 }
 
 .button-container a:hover, .button-container button:hover,
-.modal-content button:hover, input[type="submit"]:hover {
+.modal-content button:hover, input[type="submit"]:hover,
+#accessStatsTable th:hover {
     background-color: #0b7dda;
 }
 
@@ -251,7 +252,8 @@ input[type="tel"] {
 
 .update-log-modal-content, 
 .live-source-modal-content,
-.access-log-modal-content {
+.access-log-modal-content,
+.access-stat-modal-content {
     width: 930px;
 }
 
@@ -305,6 +307,10 @@ input[type="tel"] {
     min-height: 340px;
     margin-bottom: 0px;
     resize: vertical;
+}
+
+.table-container[id="access-stats-table-container"] {
+    height: 457px;
 }
 
 #logTable, #channelMatchTable, #channelTable, 
@@ -371,6 +377,40 @@ input[type="tel"] {
 #channelMatchTable th:nth-child(4),
 #channelMatchTable td:nth-child(4) {
     width: 15%; /* 第四列宽度 */
+}
+
+#accessStatsTableWrapper {
+    overflow: auto;
+    max-width: 100%;
+}
+
+#accessStatsTable {
+    border-collapse: collapse;
+    width: max-content;
+    min-width: 100%;
+}
+
+#accessStatsTable th,
+#accessStatsTable td {
+    border: 1px solid #ccc;
+    padding: 6px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+#accessStatsTable th {
+    background-color: #2196F3;
+    color: white;
+    cursor: pointer;
+    user-select: none;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+#accessStatsTable td:first-child,
+#accessStatsTable th:first-child {
+    position: sticky;
 }
 
 .row {
@@ -568,13 +608,15 @@ body.dark .blue-span:hover {
 }
 
 body.dark .button-container a,
-body.dark .button-container button {
+body.dark .button-container button,
+body.dark #accessStatsTable th {
     background-color: #2d78b9;
     color: #e0e0e0;
 }
 
 body.dark .button-container a:hover,
-body.dark .button-container button:hover {
+body.dark .button-container button:hover,
+body.dark #accessStatsTable th:hover {
     background-color: #1565c0;
 }
 

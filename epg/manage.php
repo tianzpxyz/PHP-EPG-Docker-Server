@@ -113,7 +113,7 @@ function updateConfigFields() {
         foreach (explode("\n", $mappings) as $line) {
             if ($line = trim($line)) {
                 list($search, $replace) = preg_split('/=》|=>/', $line);
-                $channel_mappings[trim($search)] = trim(str_replace("，", ",", trim($replace)), '[]');
+                $channel_mappings[trim($search)] = str_replace("，", ",", trim($replace));
             }
         }
     }
@@ -121,7 +121,7 @@ function updateConfigFields() {
     // 解析频道 EPG 数据
     $channel_bind_epg = isset($_POST['channel_bind_epg']) ? array_filter(array_reduce(json_decode($_POST['channel_bind_epg'], true), function($result, $item) {
         $epgSrc = preg_replace('/^【已停用】/', '', $item['epg_src']);
-        if (!empty($item['channels'])) $result[$epgSrc] = trim(str_replace("，", ",", trim($item['channels'])), '[]');
+        if (!empty($item['channels'])) $result[$epgSrc] = str_replace("，", ",", trim($item['channels']));
         return $result;
     }, [])) : $Config['channel_bind_epg'];
 
@@ -174,9 +174,9 @@ try {
         $action_map = [
             'get_update_logs', 'get_cron_logs', 'get_channel', 'get_epg_by_channel',
             'get_icon', 'get_channel_bind_epg', 'get_channel_match', 'get_gen_list',
-            'get_live_data', 'parse_source_info', 'download_data', 'delete_unused_icons', 
+            'get_live_data', 'parse_source_info', 'download_source_data', 'delete_unused_icons', 
             'delete_unused_live_data', 'get_version_log', 'get_readme_content', 'get_access_log',
-            'clear_access_log'
+            'clear_access_log', 'get_ip_list'
         ];
         $action = key(array_intersect_key($_GET, array_flip($action_map))) ?: '';
 
@@ -195,8 +195,14 @@ try {
             case 'get_channel':
                 // 获取频道
                 $channels = $db->query("SELECT DISTINCT channel FROM epg_data ORDER BY channel ASC")->fetchAll(PDO::FETCH_COLUMN);
+
+                // 将频道忽略字符插入到频道列表的开头
+                $channel_ignore_chars = [
+                    ['original' => '【频道忽略字符】', 'mapped' => $Config['channel_ignore_chars'] ?? "&nbsp, -"]
+                ];
+
                 $channelMappings = $Config['channel_mappings'];
-                $mappedChannels = [];
+                $mappedChannels = $channel_ignore_chars;
                 foreach ($channelMappings as $mapped => $original) {
                     if (($index = array_search(strtoupper($mapped), $channels)) !== false) {
                         $mappedChannels[] = [
@@ -342,7 +348,7 @@ try {
                 break;
             
             case 'get_live_data':
-                // 读取文件内容
+                // 读取直播源文件内容
                 function readFileContent($filePath) {
                     return file_exists($filePath) ? file_get_contents($filePath) : '';
                 }
@@ -397,8 +403,8 @@ try {
                 }
                 break;
 
-            case 'download_data':
-                // 下载数据
+            case 'download_source_data':
+                // 下载直播源数据
                 $url = filter_var(($_GET['url']), FILTER_VALIDATE_URL);
                 if ($url) {
                     $data = downloadData($url, '', 5);
@@ -503,14 +509,38 @@ try {
 
             case 'get_access_log':
                 $accesslogFile = 'data/access.log';
-                $accesslogContent = file_exists($accesslogFile) ? file_get_contents($accesslogFile) : '';
-                $dbResponse = ['success' => true, 'content' => $accesslogContent];
+                $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+            
+                if (!file_exists($accesslogFile)) {
+                    $dbResponse = ['success' => true, 'changed' => false];
+                    break;
+                }
+            
+                $filesize = filesize($accesslogFile);
+                if ($offset < $filesize) {
+                    $content = file_get_contents($accesslogFile, false, null, $offset);
+                    $dbResponse = ['success' => true, 'changed' => true, 'content' => $content, 'offset' => $filesize];
+                } else {
+                    $dbResponse = ['success' => true, 'changed' => false, 'offset' => $filesize];
+                }
                 break;
-                
+
             case 'clear_access_log':
                 $file = 'data/access.log';
                 $res = file_exists($file) && is_writable($file) && file_put_contents($file, '') !== false;
                 $dbResponse = ['success' => $res];
+                break;
+
+            case 'get_ip_list':
+                $filename = basename($_GET['file'] ?? 'ipBlackList.txt'); // 只允许基本文件名
+                $file_path = __DIR__ . "/data/{$filename}";
+            
+                if (file_exists($file_path)) {
+                    $content = file($file_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                    $dbResponse = ['success' => true, 'list' => $content];
+                } else {
+                    $dbResponse = ['success' => true, 'list' => []];
+                }
                 break;
 
             default:
