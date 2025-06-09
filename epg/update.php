@@ -68,12 +68,17 @@ function deleteOldData($db, $thresholdDate, &$log_messages) {
         logMessage($log_messages, "【清理访问日志】 共 " . (count($lines) - count($newLines)) . " 条。");
     }
     
-    // 清理 memcached 数据
-    if (class_exists('Memcached') && ($memcached = new Memcached())->addServer('localhost', 11211)) {
+    // 清理缓存数据
+    $cached_type = $Config['cached_type'] ?? 'memcached';
+    if ($cached_type === 'memcached' && class_exists('Memcached') && ($memcached = new Memcached())->addServer('127.0.0.1', 11211)) {
         $memcached->flush();
         logMessage($log_messages, "【Memcached】 已清空。");
+    } elseif ($cached_type === 'redis' && class_exists('Redis') && ($redis = new Redis()) && $redis->connect($Config['redis']['host'], $Config['redis']['port']) 
+        && (empty($Config['redis']['password']) || $redis->auth($Config['redis']['password'])) && $redis->ping()) {
+        $redis->flushAll();
+        logMessage($log_messages, "【Redis】 已清空。");
     } else {
-        logMessage($log_messages, "【Memcached】 状态异常。");
+        logMessage($log_messages, "【{$cached_type}】 状态异常。");
     }
 
     echo "<br>";
@@ -151,7 +156,7 @@ function getChannelBindEPG() {
 }
 
 // 下载 XML 数据并存入数据库
-function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $white_list = [], $black_list = []) {
+function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $white_list, $black_list, $timeZone) {
     global $Config;
     $xml_data = downloadData($xml_url, $userAgent);
     if ($xml_data !== false && stripos($xml_data, 'not found') === false) {
@@ -177,7 +182,7 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
         if ($Config['cht_to_chs'] ?? 1 === 2) { $xml_data = t2s($xml_data); }
         $db->beginTransaction();
         try {
-            $processCount = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list);
+            $processCount = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $timeZone);
             $db->commit();
             logMessage($log_messages, "【更新】 成功：共 {$processCount} 条");
         } catch (Exception $e) {
@@ -191,7 +196,7 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
 }
 
 // 处理 XML 数据并逐步存入数据库
-function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list) {
+function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $timeZone) {
     global $Config, $processedRecords, $channel_bind_epg, $thresholdDate;
 
     // 统计处理数据量
@@ -250,8 +255,8 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
     $currentChannelProgrammes = [];
     $crossDayProgrammes = []; // 保存跨天的节目数据
     
-    // 修正 epg.pw 时区错误
-    $overwrite_time_zone = strpos($xml_data, 'epg.pw') !== false ? '+0800' : '';
+    // 修正时区错误
+    $overwrite_time_zone = $timeZone ?: (strpos($xml_data, 'epg.pw') !== false ? '+0800' : '');
 
     while ($reader->name === 'programme') {
         $programme = new SimpleXMLElement($reader->readOuterXML());
@@ -334,13 +339,12 @@ function processIconListAndXmltv($db, $gen_list_mapping, &$log_messages) {
     $query = "SELECT date, channel, epg_diyp FROM epg_data $dateCondition ORDER BY channel ASC, date ASC";
     $stmt = $db->query($query);
 
-
     // 存储节目数据以按频道分组
     $channelData = [];
 
     while ($program = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $channelName = $program['channel'];
-        $iconUrl = iconUrlMatch($channelName, false, false);
+        $iconUrl = iconUrlMatch($channelName, false);
 
         if ($iconUrl) {
             $iconList[strtoupper($channelName)] = $iconUrl;
@@ -535,6 +539,7 @@ foreach ($Config['xml_urls'] as $xml_url) {
     $cleaned_url = trim($xml_parts[0]);
     $userAgent = '';
     $white_list = $black_list = [];
+    $timeZone = '';
     
     logMessage($log_messages, "【地址】 $cleaned_url");
     
@@ -542,6 +547,7 @@ foreach ($Config['xml_urls'] as $xml_url) {
         $part = trim($part);
         if (stripos($part, 'UA=') === 0 || stripos($part, 'useragent=') === 0) {
             $userAgent = substr($part, strpos($part, '=') + 1);
+            logMessage($log_messages, "【自定】 UA：$userAgent");
         } elseif (stripos($part, 'FT=') === 0 || stripos($part, 'filter=') === 0) {
             $filter_raw = strtoupper(t2s(trim(substr($part, strpos($part, '=') + 1))));
             $list = array_map('trim', explode(',', ltrim($filter_raw, '!')));
@@ -552,10 +558,13 @@ foreach ($Config['xml_urls'] as $xml_url) {
                 $white_list = $list;
                 logMessage($log_messages, "【临时】 限定频道：" . implode(", ", $white_list));
             }
+        } elseif (stripos($part, 'TZ=') === 0 || stripos($part, 'timezone=') === 0) {
+            $timeZone = substr($part, strpos($part, '=') + 1);
+            logMessage($log_messages, "【修正】 时区：$timeZone");
         }
     }
         
-    downloadXmlData($cleaned_url, $userAgent, $db, $log_messages, $gen_list, $white_list, $black_list);
+    downloadXmlData($cleaned_url, $userAgent, $db, $log_messages, $gen_list, $white_list, $black_list, $timeZone);
 }
 
 // 更新 iconList.json 及生成 xmltv 文件
