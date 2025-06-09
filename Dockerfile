@@ -41,6 +41,7 @@ RUN apk --no-cache --update \
     php83-posix \
     php83-zip \
     php83-pecl-memcached \
+    php83-pecl-redis \
     && mkdir /htdocs
 
 # 复制 ./epg 文件夹内容到 /htdocs

@@ -159,7 +159,7 @@ function updateConfigFields() {
     if ($oldConfig['start_time'] !== $start_time || $oldConfig['end_time'] !== $end_time || $oldConfig['interval_time'] !== $interval_time) {
         exec('php cron.php > /dev/null 2>/dev/null &');
     }
-
+    
     return ['db_type_set' => $db_type_set];
 }
 
@@ -176,7 +176,7 @@ try {
             'get_icon', 'get_channel_bind_epg', 'get_channel_match', 'get_gen_list',
             'get_live_data', 'parse_source_info', 'download_source_data', 'delete_unused_icons', 
             'delete_unused_live_data', 'get_version_log', 'get_readme_content', 'get_access_log',
-            'clear_access_log', 'get_ip_list'
+            'clear_access_log', 'get_ip_list', 'test_redis'
         ];
         $action = key(array_intersect_key($_GET, array_flip($action_map))) ?: '';
 
@@ -543,6 +543,26 @@ try {
                 }
                 break;
 
+            case 'test_redis':
+                $redisConfig = $Config['redis'] ?? [];
+                try {
+                    $redis = new Redis();
+                    $redis->connect($redisConfig['host'] ?: '127.0.0.1', $redisConfig['port'] ? (int)$redisConfig['port'] : 6379);
+                    if (!empty($redisConfig['password'])) {
+                        $redis->auth($redisConfig['password']);
+                    }
+                    if ($redis->ping()) {
+                        $Config['cached_type'] = 'redis';
+                        file_put_contents($configPath, json_encode($Config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                        $dbResponse = ['success' => true];
+                    } else {
+                        $dbResponse = ['success' => false];
+                    }
+                } catch (Exception $e) {
+                    $dbResponse = ['success' => false];
+                }
+                break;
+
             default:
                 $dbResponse = null;
                 break;
@@ -695,9 +715,13 @@ try {
                     echo json_encode(['success' => true]);
                 }
 
-                // 清理 memcached 数据，避免缓存
-                if (class_exists('Memcached') && ($memcached = new Memcached())->addServer('localhost', 11211)) {
+                // 清理缓存数据
+                $cached_type = $Config['cached_type'] ?? 'memcached';
+                if ($cached_type === 'memcached' && class_exists('Memcached') && ($memcached = new Memcached())->addServer('127.0.0.1', 11211)) {
                     $memcached->flush();
+                } elseif ($cached_type === 'redis' && class_exists('Redis') && ($redis = new Redis()) && $redis->connect($Config['redis']['host'], $Config['redis']['port']) 
+                    && (empty($Config['redis']['password']) || $redis->auth($Config['redis']['password'])) && $redis->ping()) {
+                    $redis->flushAll();
                 }
                 exit;
 
