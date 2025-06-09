@@ -343,6 +343,33 @@
     </div>
 </div>
 
+<!-- MySQL 配置模态框 -->
+<div id="mysqlConfigModal" class="modal">
+    <div class="modal-content mysql-config-modal-content" style="width:275px">
+        <span class="close">&times;</span>
+        <h2>MySQL 配置</h2><br>
+        <div><label>地址：<input type="text" id="mysql_host" value="<?php echo $Config['mysql']['host'] ?? ''; ?>" style="width:200px"></label></div>
+        <div><label>库名：<input type="text" id="mysql_dbname" value="<?php echo $Config['mysql']['dbname'] ?? ''; ?>" style="width:200px"></label></div>
+        <div><label>用户：<input type="text" id="mysql_username" value="<?php echo $Config['mysql']['username'] ?? ''; ?>" style="width:200px"></label></div>
+        <div><label>密码：<input type="text" id="mysql_password" value="<?php echo $Config['mysql']['password'] ?? ''; ?>" style="width:200px"></label></div>
+        <br>
+        <div><button type="button" onclick="mysqlConfigModal.style.display='none';updateConfig()">保存配置</button></div>
+    </div>
+</div>
+
+<!-- Redis 配置模态框 -->
+<div id="redisConfigModal" class="modal">
+    <div class="modal-content redis-config-modal-content" style="width:275px">
+        <span class="close">&times;</span>
+        <h2>Redis 配置</h2><br>
+        <div><label>地址：<input type="text" id="redis_host" placeholder="127.0.0.1" value="<?php echo $Config['redis']['host'] ?? ''; ?>" style="width:200px"></label></div>
+        <div><label>端口：<input type="text" id="redis_port" placeholder="6379" value="<?php echo $Config['redis']['port'] ?? ''; ?>" style="width:200px"></label></div>
+        <div><label>密码：<input type="text" id="redis_password" value="<?php echo $Config['redis']['password'] ?? ''; ?>" style="width:200px"></label></div>
+        <br>
+        <div><button type="button" onclick="redisConfigModal.style.display='none';saveAndTestRedisConfig()">保存配置</button></div>
+    </div>
+</div>
+
 <!-- 直播源管理模态框 -->
 <div id="liveSourceManageModal" class="modal">
     <div class="modal-content live-source-modal-content">
@@ -683,38 +710,25 @@
             </div>
             <div class="column">
                 <label for="db_type">数据库：</label>
-                <select id="db_type" name="db_type" required>
-                    <option value="sqlite" <?php if (!isset($Config['db_type']) || $Config['db_type'] == 'sqlite') echo 'selected'; ?>>SQLite</option>
-                    <option value="mysql" <?php if (isset($Config['db_type']) && $Config['db_type'] == 'mysql') echo 'selected'; ?>>MySQL</option>
+                <select id="db_type" name="db_type" required onchange="changeDbType()">
+                    <option value="sqlite" <?php echo ($Config['db_type'] ?? 'sqlite') == 'sqlite' ? 'selected' : ''?>>SQLite</option>
+                    <option value="mysql" <?php echo ($Config['db_type'] ?? 'sqlite') == 'mysql' ? 'selected' : ''?>>MySQL</option>
                 </select>
             </div>
             <div class="column">
-                <label for="mysql_host">地址：</label>
-                <textarea id="mysql_host"><?php echo htmlspecialchars($Config['mysql']['host'] ?? ''); ?></textarea>
+                <label for="cached_type">数据缓存：</label>
+                <select id="cached_type" name="cached_type" required onchange="changeCachedType()">
+                    <option value="memcached" <?php echo ($Config['cached_type'] ?? 'memcached') == 'memcached' ? 'selected' : ''?>>Memcached</option>
+                    <option value="redis" <?php echo ($Config['cached_type'] ?? 'memcached') == 'redis' ? 'selected' : ''?>>Redis</option>
+                </select>
             </div>
         </div>
 
         <!-- 第四行 -->
         <div class="row">
             <div class="column">
-                <label for="mysql_dbname">库名：</label>
-                <textarea id="mysql_dbname"><?php echo htmlspecialchars($Config['mysql']['dbname'] ?? ''); ?></textarea>
-            </div>
-            <div class="column">
-                <label for="mysql_username">用户：</label>
-                <textarea id="mysql_username"><?php echo htmlspecialchars($Config['mysql']['username'] ?? ''); ?></textarea>
-            </div>
-            <div class="column">
-                <label for="mysql_password">密码：</label>
-                <textarea id="mysql_password"><?php echo htmlspecialchars($Config['mysql']['password'] ?? ''); ?></textarea>
-            </div>
-        </div>
-
-        <!-- 第五行 -->
-        <div class="row">
-            <div class="column">
                 <label for="ip_list_mode"><span class="blue-span" onclick="showIpModal()">IP 列表</span>：</label>
-                <select id="ip_list_mode" name="ip_list_mode" required>
+                <select id="ip_list_mode" name="ip_list_mode" required onchange="showIpModal()">
                     <option value="0" <?php echo ($Config['ip_list_mode'] ?? 0) == 0 ? 'selected' : '' ?>>不使用</option>
                     <option value="1" <?php echo ($Config['ip_list_mode'] ?? 0) == 1 ? 'selected' : '' ?>>白名单模式</option>
                     <option value="2" <?php echo ($Config['ip_list_mode'] ?? 0) == 2 ? 'selected' : '' ?>>黑名单模式</option>
@@ -737,13 +751,14 @@
         </div>
 
         <!-- 其他设置 -->
-        <label for="gen_list_text">仅生成以下频道数据：</label>
+        <span>匹配频道列表：</span>
+        <label for="gen_list_text">（仅生成以下数据</label>
         <select id="gen_list_enable" name="gen_list_enable" style="width: 60px; margin-right: 0px;" required>
             <option value="1" <?php if (isset($Config['gen_list_enable']) && $Config['gen_list_enable'] == 1) echo 'selected'; ?>>是</option>
             <option value="0" <?php if (!isset($Config['gen_list_enable']) || $Config['gen_list_enable'] == 0) echo 'selected'; ?>>否</option>
         </select>
         <span>
-            （粘贴m3u、txt地址或内容，<span class="blue-span" onclick="parseSource()">解析</span> 后
+            ）（粘贴m3u、txt地址或内容，<span class="blue-span" onclick="parseSource()">解析</span> 后
             <span class="blue-span" onclick="showModal('channelmatch')">查看匹配</span>）
         </span>
         <br>

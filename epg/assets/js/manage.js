@@ -11,7 +11,7 @@ document.getElementById('settingsForm').addEventListener('submit', function(even
     event.preventDefault();  // 阻止默认表单提交
 
     const fields = ['update_config', 'gen_xml', 'include_future_only', 'ret_default', 'cht_to_chs', 
-        'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 'gen_list_enable', 
+        'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 'cached_type', 'gen_list_enable', 
         'check_update', 'token_range', 'user_agent_range', 'debug_mode', 'ip_list_mode', 'live_template_enable', 
         'live_fuzzy_match', 'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 
         'live_tvg_name_enable', 'live_source_auto_sync', 'live_channel_name_process', 'gen_live_update_time', 
@@ -42,9 +42,8 @@ document.getElementById('settingsForm').addEventListener('submit', function(even
         
         let message = '配置已更新<br><br>';
         if (!db_type_set) {
-            message += 'MySQL 启用失败<br>数据库已设为 SQLite<br><br>';
+            message += '<span style="color:red">MySQL 启用失败<br>数据库已设为 SQLite</span><br><br>';
             document.getElementById('db_type').value = 'sqlite';
-            updateMySQLFields();
         }
         message += interval_time === 0 
             ? "已取消定时任务" 
@@ -150,16 +149,6 @@ function formatTime(seconds) {
     return `${formattedHours}小时${formattedMinutes}分钟`;
 }
 
-// 更新 MySQL 按钮状态
-function updateMySQLFields() {
-    var dbType = document.getElementById('db_type').value;
-    var isSQLite = (dbType === 'sqlite');
-    document.getElementById('mysql_host').disabled = isSQLite;
-    document.getElementById('mysql_dbname').disabled = isSQLite;
-    document.getElementById('mysql_username').disabled = isSQLite;
-    document.getElementById('mysql_password').disabled = isSQLite;
-}
-
 // 显示带消息的模态框
 function showModalWithMessage(modalId, messageId = '', message = '') {
     const modal = document.getElementById(modalId);
@@ -248,8 +237,6 @@ function showModal(type, popup = true, data = '') {
             modal = document.getElementById("moreLiveSettingModal");
             break;
         case 'moresetting':
-            updateMySQLFields(); // 设置 MySQL 相关输入框状态
-            document.getElementById('db_type').addEventListener('change', updateMySQLFields);
             modal = document.getElementById("moreSettingModal");
             fetchData('manage.php?get_gen_list=true', updateGenList);
             break;
@@ -375,7 +362,7 @@ function showDonationImage() {
 // 更新 EPG 内容
 function updateEpgContent(epgData) {
     document.getElementById('epgTitle').innerHTML = epgData.channel;
-    document.getElementById('epgSource').innerHTML = `来源：${epgData.source}`;
+    document.getElementById('epgSource').innerHTML = `来源：<a href="${epgData.source}" target="_blank" style="word-break: break-all;">${epgData.source}</a>`;
     document.getElementById('epgDate').innerHTML = epgData.date;
     var epgContent = document.getElementById("epgContent");
     epgContent.value = epgData.epg;
@@ -413,6 +400,55 @@ function updateCronLogContent(logData) {
 }
 
 let lastOffset = 0, timer = null;
+
+// 修改数据库相关信息
+function changeDbType() {
+    if (document.getElementById('db_type').value === 'sqlite') return;
+    showModalWithMessage('mysqlConfigModal');
+}
+
+// 修改数据缓存相关信息
+function changeCachedType() {
+    const select = document.getElementById('cached_type');
+    if (select.value === 'memcached') return;
+    showModalWithMessage('redisConfigModal');
+    setTimeout(() => {
+        redisConfigModal.querySelector('.close')?.addEventListener('mousedown', () => select.value = 'memcached');
+        window.addEventListener('mousedown', function handler(e) {
+            if (e.target === redisConfigModal) {
+                select.value = 'memcached';
+                window.removeEventListener('mousedown', handler);
+            }
+        });
+    });
+}
+
+// 更新并测试 Redis 账号信息
+async function saveAndTestRedisConfig() {
+    try {
+      // 保存配置
+      await fetch('manage.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({
+          update_config_field: 'true',
+          'redis[host]': document.getElementById('redis_host').value.trim(),
+          'redis[port]': document.getElementById('redis_port').value.trim(),
+          'redis[password]': document.getElementById('redis_password').value.trim()
+        })
+      });
+  
+      // 测试连接
+      const res = await fetch('manage.php?test_redis=true');
+      const data = await res.json();
+  
+      document.getElementById('cached_type').value = data.success ? 'redis' : 'memcached';
+      showMessageModal(data.success ? '配置已保存，Redis 连接成功' : 'Redis 连接失败，已恢复为 Memcached');
+    } catch {
+      document.getElementById('cached_type').value = 'memcached';
+      showMessageModal('请求失败，已恢复为 Memcached');
+    }
+}
 
 // 显示访问日志
 function showAccessLogModal() {
@@ -483,6 +519,7 @@ function loadAccessStats() {
 
     const statsByDate = {};
     const ipTotal = {};
+    const ipDeny = {};
 
     const logRegex = /^\[(\d{4}-\d{2}-\d{2})[^\]]*\] \[(.*?)\]/;
 
@@ -496,6 +533,10 @@ function loadAccessStats() {
         statsByDate[date][ip] = (statsByDate[date][ip] || 0) + 1;
     
         ipTotal[ip] = (ipTotal[ip] || 0) + 1;
+
+        if (line.includes("访问被拒绝")) {
+            ipDeny[ip] = (ipDeny[ip] || 0) + 1;
+        }
     });
 
     const ips = Object.keys(ipTotal);
@@ -504,7 +545,8 @@ function loadAccessStats() {
     const ipData = ips.map(ip => {
         const counts = dates.map(date => statsByDate[date]?.[ip] || 0);
         const total = counts.reduce((a, b) => a + b, 0);
-        return { ip, counts, total };
+        const deny = ipDeny[ip] || 0;
+        return { ip, counts, total, deny };
     });
 
     cachedData = { ipData, dates, rawStats: statsByDate };
@@ -531,6 +573,8 @@ function renderAccessStatsTable() {
             result = a.ip.localeCompare(b.ip);
         } else if (column === 'total') {
             result = a.total - b.total;
+        } else if (column === 'deny') {
+            result = a.deny - b.deny;
         } else {
             const i = dates.indexOf(column);
             result = a.counts[i] - b.counts[i];
@@ -552,18 +596,20 @@ function renderTableHeader(dates) {
         <tr>
             <th onclick="sortByColumn('ip')">IP地址${arrow('ip')}</th>
             ${dates.map(date => `<th onclick="sortByColumn('${date}')">${date.slice(5)}${arrow(date)}</th>`).join('')}
+            <th onclick="sortByColumn('deny')">拒绝${arrow('deny')}</th>
             <th onclick="sortByColumn('total')">总计${arrow('total')}</th>
             <th>操作</th>
         </tr>
     `;
 }
 
-function renderTableRow({ ip, counts, total }) {
+function renderTableRow({ ip, counts, total, deny }) {
     const countCells = counts.map(c => `<td>${c}</td>`).join('');
     return `
         <tr>
             <td><a href="#" onclick="filterLogByIp('${ip}'); return false;">${ip}</a></td>
             ${countCells}
+            <td>${deny}</td>
             <td>${total}</td>
             <td>
                 <button onclick="addIp('${ip}','black')" style="width: 30px; padding: 1px;">黑</button>
@@ -578,7 +624,7 @@ function filterLogByIp(ip) {
     const lines = logContent.split('\n').filter(line => line.includes(ip));
     const filtered = lines.length > 0 ? lines.map(line => line.trimEnd()).join('\n') : `无记录：${ip}`;
     showMessageModal(`
-        <div id="filteredLog" style="width:930px; height:500px; overflow:auto; font-family:monospace; white-space:pre;">${filtered.replace(/\n/g, '<br>')}</div>
+        <div id="filteredLog" style="width:930px; height:504px; overflow:auto; font-family:monospace; white-space:pre;">${filtered.replace(/\n/g, '<br>')}</div>
     `);
     const d = document.getElementById("filteredLog");
     if (d) d.scrollTop = d.scrollHeight;;
@@ -652,8 +698,19 @@ function downloadAccessLog() {
 // 显示 IP 列表模态框
 function showIpModal() {
     const mode = document.getElementById('ip_list_mode').value;
-    const file = mode === '1' ? 'ipWhiteList.txt' : 'ipBlackList.txt';
-    const modeName = mode === '1' ? '白名单' : '黑名单';
+    
+    fetch('manage.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            update_config_field: 'true',
+            ip_list_mode: mode
+        })
+    });
+
+    if (mode === '0') return;
+    const file = (mode === '1' ? 'ipWhiteList.txt' : 'ipBlackList.txt');
+    const modeName = (mode === '1' ? '白名单' : '黑名单');
 
     fetch(`manage.php?get_ip_list=true&file=${encodeURIComponent(file)}`)
         .then(res => res.json())
@@ -678,19 +735,23 @@ function saveIpList() {
     const file = textarea.dataset.file || 'ipBlackList.txt';
 
     const lines = textarea.value.split('\n').map(s => s.trim()).filter(Boolean);
-    const ipv4 = /^(25[0-5]|2\d{2}|1\d{2}|[1-9]?\d)(\.(25[0-5]|2\d{2}|1\d{2}|[1-9]?\d)){3}$/;
-    const ipv6 = /^([0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|::/;
 
+    // 支持单个 IPv4、IPv6、IPv4 CIDR、IPv4 通配符（可选）
+    const patterns = [
+        /^(\*|25[0-5]|2\d{1,2}|1\d{1,2}|\d{1,2})(\.(\*|25[0-5]|2\d{1,2}|1\d{1,2}|\d{1,2})){3}$/,  // IPv4 + 通配符
+        /^(\d{1,3}\.){3}\d{1,3}\/([0-9]|[1-2][0-9]|3[0-2])$/,                                     // CIDR
+        /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/                                              // IPv6（简化）
+    ];
+    
     const valid = [], invalid = [];
-
+    
     for (const ip of [...new Set(lines)]) {
-        if (ipv4.test(ip) || ipv6.test(ip)) valid.push(ip);
-        else invalid.push(ip);
-    }
+        (patterns.some(re => re.test(ip)) ? valid : invalid).push(ip);
+    }    
 
     textarea.value = valid.join('\n');
 
-    if (invalid.length) showMessageModal(`以下 IP 无效，已忽略：\n${invalid.join('\n')}`);
+    if (invalid.length) alert(`以下 IP 无效，已忽略：\n${invalid.join('\n')}`);
 
     fetch('manage.php', {
         method: 'POST',
@@ -1576,7 +1637,8 @@ function changeTokenUA(type, currentTokenUA) {
 
 // 更新 token、user_agent 到 config.json
 function updateTokenUA(type) {
-    var newTokenUA = document.getElementById('newTokenUA').value;
+    var newTokenUA = document.getElementById('newTokenUA').value.trim().split('\n').filter(l=>l.trim()).join('\n');
+    const type_range = document.getElementById(`${type}_range`).value;
 
     // 内容写入 config.json 文件
     fetch('manage.php', {
@@ -1584,13 +1646,14 @@ function updateTokenUA(type) {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
             update_config_field: 'true',
-            [type.toLowerCase()]: newTokenUA
+            [`${type}_range`]: type_range,
+            [type]: newTokenUA
         })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            if (type.toLowerCase() == 'token' || newTokenUA == '') {
+            if (type == 'token' || newTokenUA == '') {
                 alert('修改成功');
                 window.location.href = 'manage.php';
             }
