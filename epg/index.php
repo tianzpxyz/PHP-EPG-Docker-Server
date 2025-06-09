@@ -71,11 +71,33 @@ $clientIp = getClientIp();
 
 // 验证 IP 黑白名单
 if (!$accessDenied && !empty($Config['ip_list_mode'])) {
-    $mode = (int)$Config['ip_list_mode']; // 1白名单，2黑名单
+    function ipInCidr($ip, $cidr) {
+        [$subnet, $mask] = explode('/', $cidr);
+        $ip = ip2long($ip);
+        $subnet = ip2long($subnet);
+        $mask = ~((1 << (32 - $mask)) - 1);
+        return ($ip & $mask) === ($subnet & $mask);
+    }
+    
+    $mode = (int)$Config['ip_list_mode'];
     $file = __DIR__ . '/data/' . ($mode === 1 ? 'ipWhiteList.txt' : 'ipBlackList.txt');
+
     if (file_exists($file)) {
-        $ipList = array_filter(array_map('trim', file($file)));
-        $hit = in_array($clientIp, $ipList);
+        $ipList = file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $hit = false;
+
+        foreach ($ipList as $rule) {
+            $rule = trim($rule);
+
+            if (strpos($rule, '/') !== false) {
+                if (ipInCidr($clientIp, $rule)) {
+                    $hit = true; break;
+                }
+            } elseif (fnmatch($rule, $clientIp)) {
+                $hit = true; break;
+            }
+        }
+
         if (($mode === 1 && !$hit) || ($mode === 2 && $hit)) {
             $accessDenied = true;
             $denyMessage = "访问被拒绝：IP不允许。";
@@ -142,23 +164,28 @@ function getFormatTime($time) {
     return ['date' => $date, 'time' => $time];
 }
 
-// 从数据库读取 diyp、lovetv 数据，兼容未安装 memcached 的情况
+// 从数据库读取 diyp、lovetv 数据，兼容未安装 Memcached/Redis 的情况
 function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
-    global $serverUrl;
+    global $Config, $serverUrl;
 
     // 默认缓存 24 小时，更新数据时清空
     $cache_time = 24 * 3600;
 
     // 检查 Memcached 状态
-    $memcached_enabled = class_exists('Memcached') && ($memcached = new Memcached())->addServer('localhost', 11211);
+    $cached_type = $Config['cached_type'] ?? 'memcached';
+    $memcached_enabled = $cached_type === 'memcached' && class_exists('Memcached') && ($memcached = new Memcached())->addServer('127.0.0.1', 11211);
+    $redis_enabled = $cached_type === 'redis' && class_exists('Redis') && ($redis = new Redis()) && $redis->connect($Config['redis']['host'], $Config['redis']['port']) 
+        && (empty($Config['redis']['password']) || $redis->auth($Config['redis']['password'])) && $redis->ping();
     $cache_key = base64_encode("{$date}_{$cleanChannelName}_{$type}");
 
+    // 从缓存中读取数据
     if ($memcached_enabled) {
-        // 从缓存中读取数据
         $cached_data = $memcached->get($cache_key);
-        if ($cached_data) {
-            $cached_data = preg_replace('#.*(/data/icon/.*)#', $serverUrl . '$1', $cached_data);
-        }
+    } elseif ($redis_enabled) {
+        $cached_data = $redis->get($cache_key);
+    }
+    if ($cached_data) {
+        return preg_replace('#"(/data/icon/.*)#', '"' . $serverUrl . '$1', $cached_data);
     }
 
     // 获取数据库类型（mysql 或 sqlite）
@@ -209,15 +236,6 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
         ['icon' => $iconUrl],
         array_slice($rowArray, array_search('url', array_keys($rowArray)) + 1)
     );
-    $row = json_encode($rowArray, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-
-    if ($type === 'diyp') {
-        // 如果 Memcached 可用，将结果存储到缓存中
-        if ($memcached_enabled) {
-            $memcached->set($cache_key, $row, $cache_time);
-        }
-        return $row;
-    }
 
     if ($type === 'lovetv') {
         $diyp_data = $rowArray;
@@ -241,7 +259,7 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
         $current_programme = $date === date('Y-m-d') ? findCurrentProgramme($program) : null;
 
         // 生成 lovetv 数据
-        $lovetv_data = [
+        $rowArray = [
             $oriChannelName => [
                 'isLive' => $current_programme ? $current_programme['t'] : '',
                 'liveSt' => $current_programme ? $current_programme['st'] : 0,
@@ -251,18 +269,17 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
                 'program' => $program
             ]
         ];
-
-        $response = json_encode($lovetv_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-
-        // 如果 Memcached 可用，将结果存储到缓存中
-        if ($memcached_enabled) {
-            $memcached->set($cache_key, $response, $cache_time);
-        }
-
-        return $response;
     }
 
-    return false;
+    $response = json_encode($rowArray, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    
+    if ($memcached_enabled) {
+        $memcached->set($cache_key, $response, $cache_time);
+    } elseif ($redis_enabled) {
+        $redis->setex($cache_key, $cache_time, $response);
+    }
+
+    return preg_replace('#"(/data/icon/.*)#', '"' . $serverUrl . '$1', $response);
 }
 
 // 查找当前节目
@@ -329,10 +346,10 @@ function fetchHandler($query_params) {
     $cleanChannelName = cleanChannelName($oriChannelName, $t2s = ($Config['cht_to_chs'] ?? false));
     $date = getFormatTime(preg_replace('/\D+/', '', $query_params['date'] ?? ''))['date'] ?? getNowDate();
 
-    // 频道为空时，返回 XML 文件
+    // 频道为空时，返回 xml.gz 文件
     if ($cleanChannelName === '') {
         if ($Config['gen_xml'] ?? 0) {
-            $type = $query_params['type'] ?? 'xml';
+            $type = $query_params['type'] ?? 'gz';
             $file = $type === 'gz' ? 't.xml.gz' : 't.xml';
             $contentType = $type === 'gz' ? 'application/gzip' : 'application/xml';
             header("Content-Type: $contentType");

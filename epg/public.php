@@ -134,13 +134,12 @@ function t2s($channel) {
 }
 
 // 台标模糊匹配
-function iconUrlMatch($originalChannel, $getDefault = true, $getFullUrl = true) {
+function iconUrlMatch($originalChannel, $getDefault = true) {
     global $Config, $iconListDefault, $iconListMerged, $serverUrl;
 
     // 精确匹配
     if (isset($iconListMerged[$originalChannel])) {
-        $finalIconUrl = $iconListMerged[$originalChannel];
-        return $getFullUrl && stripos($finalIconUrl, '/data/icon/') === 0 ?  $serverUrl . $finalIconUrl : $finalIconUrl;
+        return $iconListMerged[$originalChannel];
     }
 
     $bestMatch = null;
@@ -170,11 +169,11 @@ function iconUrlMatch($originalChannel, $getDefault = true, $getFullUrl = true) 
 
     // 如果没有找到匹配的图标，使用默认图标（如果配置中存在）
     $finalIconUrl = $iconUrl ?: ($getDefault ? ($Config['default_icon'] ?? null) : null);
-    return $getFullUrl && stripos($finalIconUrl, '/data/icon/') === 0 ?  $serverUrl . $finalIconUrl : $finalIconUrl;
+    return $finalIconUrl;
 }
 
 // 下载文件
-function downloadData($url, $userAgent = '', $timeout = 120, $connectTimeout = 10, $retry = 3) {
+function downloadData($url, $userAgent = '', $timeout = 120, $connectTimeout = 10, $retry = 3, &$error = null) {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_SSL_VERIFYPEER => 0,
@@ -190,14 +189,13 @@ function downloadData($url, $userAgent = '', $timeout = 120, $connectTimeout = 1
             'Connection: keep-alive'
         ]
     ]);
-    while ($retry--) {
-        $data = curl_exec($ch);
-        if (!curl_errno($ch)) break;
-        echo date("[y-m-d H:i:s]") . " 【下载】 失败，5秒后重试...<br>";
-        sleep(5);
+    $data = false;
+    $error = '未知错误';
+    while ($retry-- && ($data = curl_exec($ch)) === false) {
+        $error = curl_error($ch);
     }
     curl_close($ch);
-    return $data ?: false;
+    return $data;
 }
 
 // 日志记录函数
@@ -469,18 +467,28 @@ function doParseSourceInfo($urlLine = null) {
                 }
             }
         }
-    
+
         // 获取 URL 内容
-        $urlContent = (stripos($url, '/data/live/file/') === 0) 
-            ? @file_get_contents(__DIR__ . $url) 
-            : downloadData($url, $userAgent, 5);
+        $error = '';
+        $urlContent = '';
+        
+        if (stripos($url, '/data/live/file/') === 0) {
+            $urlContent = @file_get_contents(__DIR__ . $url);
+            if ($urlContent === false) {
+                $error = error_get_last()['message'] ?? 'file_get_contents failed with unknown error';
+            }
+        } else {
+            $urlContent = downloadData($url, $userAgent, 10, 10, 3, $error);
+        }
+        
         $fileName = md5(urlencode($url));  // 用 MD5 对 URL 进行命名
         $localFilePath = $liveFileDir . '/' . $fileName . '.m3u';
         
-        if (!$urlContent || stripos($urlContent, 'not found') !== false) {
+        if (($notFound = (stripos($urlContent, 'not found') !== false)) || !$urlContent) {
+            if ($notFound) $error = $urlContent;
             $urlContent = file_exists($localFilePath) ? file_get_contents($localFilePath) : '';
-            if (!$urlContent) { $errorLog .= "$url 解析失败<br>"; continue; }
-            else { $errorLog .= "$url 使用本地缓存<br>"; }
+            $errorLog .= $urlContent ? "$url 使用本地缓存<br>" : "解析失败：$url<br>错误信息：$error<br>";
+            if (!$urlContent) continue;
         }
         
         // 处理 GBK 编码
@@ -587,12 +595,13 @@ function doParseSourceInfo($urlLine = null) {
         foreach ($urlChannelData as $index => &$row) {
             // 如果不在白名单或在黑名单中，删除该行
             $chsChannelName = $chsChannelNames[$index];
+            $groupTitle = $row['groupTitle'];
             $streamUrl = $row['streamUrl'];
-            $in_white = empty($white_list) || array_filter($white_list, function ($w) use ($chsChannelName, $streamUrl) {
-                return stripos($chsChannelName, $w) !== false || stripos($streamUrl, $w) !== false;
+            $in_white = empty($white_list) || array_filter($white_list, function ($w) use ($chsChannelName, $groupTitle, $streamUrl) {
+                return stripos($chsChannelName, $w) !== false || stripos($groupTitle, $w) !== false || stripos($streamUrl, $w) !== false;
             });
-            $in_black = array_filter($black_list, function ($b) use ($chsChannelName, $streamUrl) {
-                return stripos($chsChannelName, $b) !== false || stripos($streamUrl, $b) !== false;
+            $in_black = array_filter($black_list, function ($b) use ($chsChannelName, $groupTitle, $streamUrl) {
+                return stripos($chsChannelName, $b) !== false || stripos($groupTitle, $b) !== false || stripos($streamUrl, $b) !== false;
             });
             if (!$in_white || $in_black) {
                 unset($urlChannelData[$index]);
@@ -613,7 +622,7 @@ function doParseSourceInfo($urlLine = null) {
             $row['chsChannelName'] = $chsChannelName;
             $row['iconUrl'] = ($row['iconUrl'] ?? false) && ($Config['m3u_icon_first'] ?? false)
                             ? $row['iconUrl']
-                            : (iconUrlMatch($finalChannelName, true, false) ?: $row['iconUrl']);
+                            : (iconUrlMatch($finalChannelName) ?: $row['iconUrl']);
             $row['tvgName'] = $dbChannelName ?? $row['tvgName'];
         }
 
