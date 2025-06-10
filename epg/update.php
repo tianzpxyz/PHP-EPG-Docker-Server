@@ -26,6 +26,13 @@ require_once 'public.php';
 // 设置超时时间为20分钟
 set_time_limit(20*60);
 
+// 检测是否为 AJAX 请求或 CLI 运行
+if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+    && php_sapi_name() !== 'cli') {
+    http_response_code(403); // 返回403禁止访问
+    exit('禁止直接访问，请修改update.php');
+}
+
 // 删除过期数据和日志
 function deleteOldData($db, $thresholdDate, &$log_messages) {
     global $Config;
@@ -78,7 +85,7 @@ function deleteOldData($db, $thresholdDate, &$log_messages) {
         $redis->flushAll();
         logMessage($log_messages, "【Redis】 已清空。");
     } else {
-        logMessage($log_messages, "【{$cached_type}】 状态异常。");
+        logMessage($log_messages, "【" . ucfirst($cached_type) . "】 状态异常。");
     }
 
     echo "<br>";
