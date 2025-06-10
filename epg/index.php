@@ -334,7 +334,7 @@ function liveFetchHandler($query_params) {
 
 // 处理请求
 function fetchHandler($query_params) {
-    global $init, $db, $Config;
+    global $init, $db, $serverUrl, $Config;
 
     // 处理直播源请求
     if (in_array($query_params['type'] ?? '', ['m3u', 'txt'])) {
@@ -374,6 +374,7 @@ function fetchHandler($query_params) {
         // 无法获取到数据时返回默认数据
         $ret_default = $Config['ret_default'] ?? true;
         $iconUrl = iconUrlMatch($cleanChannelName) ?? iconUrlMatch($oriChannelName);
+        $iconUrl = preg_replace('#(/data/icon/.*)#', $serverUrl . '$1', $iconUrl);
         if ($type === 'diyp') {
             // 返回默认 diyp 数据
             $default_diyp_program_info = [
