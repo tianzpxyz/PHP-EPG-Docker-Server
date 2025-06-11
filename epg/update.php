@@ -186,7 +186,7 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
         logMessage($log_messages, "【下载】 成功 | xml 文件大小：{$fileSizeReadable}{$mtimeStr}");
 
         $xml_data = mb_convert_encoding($xml_data, 'UTF-8'); // 转换成 UTF-8 编码
-        if ($Config['cht_to_chs'] ?? 1 === 2) { $xml_data = t2s($xml_data); }
+        if (($Config['cht_to_chs'] ?? 1) === 2) { $xml_data = t2s($xml_data); }
         $db->beginTransaction();
         try {
             $processCount = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $timeZone);
