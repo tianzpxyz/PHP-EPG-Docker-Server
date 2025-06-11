@@ -87,18 +87,14 @@ function initialDB() {
 }
 
 // 获取处理后的频道名：$t2s参数表示繁简转换，默认false
-function cleanChannelName($channel, $t2s = false, $channel_alt = '') {
+function cleanChannelName($channel, $t2s = false) {
     global $Config;
     $channel_ori = $channel;
     
     // 频道忽略字符，默认空格跟 -
     $chars = array_map('trim', explode(',', $Config['channel_ignore_chars'] ?? "&nbsp, -"));
     $ignore_chars = str_replace('&nbsp', ' ', $chars);
-
-    $strip = function ($str) use ($ignore_chars) { return str_replace($ignore_chars, '', $str); };
-    $channel = $strip($channel);
-    $channel_alt = $strip($channel_alt);
-    $targets = array_filter([$channel, $channel_alt]);
+    $channel = str_replace($ignore_chars, '', $channel);
 
     // 频道映射，优先级最高，支持正则表达式和多对一映射
     foreach ($Config['channel_mappings'] as $replace => $search) {
@@ -111,11 +107,8 @@ function cleanChannelName($channel, $t2s = false, $channel_alt = '') {
             // 普通映射，可能为多对一
             $channels = array_map('trim', explode(',', $search));
             foreach ($channels as $singleChannel) {
-                $single_clean = $strip($singleChannel);
-                foreach ($targets as $target) {
-                    if (strcasecmp($target, $single_clean) === 0) {
-                        return strtoupper($replace);
-                    }
+                if (strcasecmp($channel, str_replace($ignore_chars, '', $singleChannel)) === 0) {
+                    return strtoupper($replace);
                 }
             }
         }
@@ -589,7 +582,8 @@ function doParseSourceInfo($urlLine = null) {
 
         // 将所有 channelName 整合到一起，统一调用 t2s 进行繁简转换
         $channelNames = array_column($urlChannelData, 'channelName'); // 提取所有 channelName
-        $chsChannelNames = explode("\n", t2s(implode("\n", $channelNames))); // 繁简转换
+        $chsChannelNames = ($Config['cht_to_chs'] ?? 1) === 0 ? 
+            $channelNames : explode("\n", t2s(implode("\n", $channelNames))); // 繁简转换
 
         // 将转换后的信息写回 urlChannelData
         foreach ($urlChannelData as $index => &$row) {
@@ -615,7 +609,7 @@ function doParseSourceInfo($urlLine = null) {
             }
 
             // 更新部分信息
-            $cleanChannelName = cleanChannelName($chsChannelName, $t2s = false, $row['channelName']);
+            $cleanChannelName = cleanChannelName($chsChannelName);
             $dbChannelName = dbChannelNameMatch($cleanChannelName);
             $finalChannelName = $dbChannelName ?: $cleanChannelName;
             $row['channelName'] = $liveChannelNameProcess ? $finalChannelName : $row['channelName'];
