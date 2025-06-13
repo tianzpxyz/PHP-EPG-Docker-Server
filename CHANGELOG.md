@@ -1,3 +1,11 @@
+## 2025-06-14
+
+1. ✨**新增**：自定义数据源：[【EPG-Server】自定义数据源（timetv、51livetv、diyp）](https://www.right.com.cn/forum/thread-8432214-1-1.html)
+2. ✨**新增**：台标模糊匹配接口（可用于 `tvbox` 壳：`"logo":"http://{服务器IP地址}:5678/index.php?ch={name}&type=icon"`）
+3. ⚡**优化**：关闭繁體转简体时进行提醒
+4. ⚡**优化**：README.md
+5. ⚡**优化**：[捐赠鸣谢列表](https://gitee.com/taksssss/EPG-Server/blob/main/DONATIONS.md)
+   
 ## 2025-06-11.fix
 
 1. ⚡**优化**：关闭繁體转简体后的频道匹配逻辑
