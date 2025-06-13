@@ -57,7 +57,7 @@ textarea[id="channel_mappings"] {
 }
 
 textarea[id="gen_list_text"] {
-    min-height: 191px;
+    min-height: 155px;
 }
 
 textarea[id="sourceUrlTextarea"] {
@@ -309,7 +309,7 @@ input[type="tel"] {
 }
 
 .table-container[id="access-stats-table-container"] {
-    height: 460px;
+    height: 467px;
 }
 
 #logTable, #channelMatchTable, #channelTable, 

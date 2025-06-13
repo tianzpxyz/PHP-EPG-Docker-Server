@@ -18,6 +18,7 @@ $iconDir = __DIR__ . '/data/icon/'; @mkdir($iconDir, 0755, true);
 $liveDir = __DIR__ . '/data/live/'; @mkdir($liveDir, 0755, true);
 $liveFileDir = __DIR__ . '/data/live/file/'; @mkdir($liveFileDir, 0755, true);
 file_exists($configPath = __DIR__ . '/data/config.json') || copy(__DIR__ . '/assets/defaultConfig.json', $configPath);
+file_exists($customSourcePath = __DIR__ . '/data/customSource.php') || copy(__DIR__ . '/assets/defaultCustomSource.php', $customSourcePath);
 file_exists($iconListPath = __DIR__ . '/data/iconList.json') || file_put_contents($iconListPath, json_encode(new stdClass(), JSON_PRETTY_PRINT));
 ($iconList = json_decode(file_get_contents($iconListPath), true)) !== null || die("图标列表文件解析失败: " . json_last_error_msg());
 $iconListDefault = json_decode(file_get_contents(__DIR__ . '/assets/defaultIconList.json'), true) or die("默认图标列表文件解析失败: " . json_last_error_msg());
@@ -197,145 +198,40 @@ function logMessage(&$log_messages, $message) {
     echo date("[y-m-d H:i:s]") . " " . $message . "<br>";
 }
 
-// 下载 JSON 数据并存入数据库
-function downloadJSONData($data_source, $data_str, $db, &$log_messages, $replaceFlag = true) {
+// 抓取数据并存入数据库
+require_once 'scraper.php';
+function scrapeSource($source, $url, $db, &$log_messages) {
+    global $sourceHandlers;
+
+    if (empty($sourceHandlers[$source]['handler']) || !is_callable($sourceHandlers[$source]['handler'])) {
+        logMessage($log_messages, "【{$source}】处理函数未定义或不可调用");
+        return;
+    }
+
     $db->beginTransaction();
     try {
-        processJsonData($data_source, $data_str, $db, $log_messages, $replaceFlag);
+        $allChannelProgrammes = call_user_func($sourceHandlers[$source]['handler'], $url);
+
+        foreach ($allChannelProgrammes as $channelId => $channelProgrammes) {
+            $count = $channelProgrammes['process_count'] ?? 0;
+            if ($count > 0) {
+                insertDataToDatabase([$channelId => $channelProgrammes], $db, $source);
+            }
+            logMessage($log_messages, "【{$source}】{$channelProgrammes['channel_name']} " .
+                ($count > 0 ? "更新成功，共 {$count} 条" : "下载失败！！！"));
+        }
+
         $db->commit();
     } catch (Exception $e) {
         $db->rollBack();
-        logMessage($log_messages, "【{$data_source}】 " . $e->getMessage());
+        logMessage($log_messages, "【{$source}】处理出错：" . $e->getMessage());
     }
+
     echo "<br>";
 }
 
-// 处理 JSON 数据并存入数据库
-function processJsonData($data_source, $data_str, $db, &$log_messages, $replaceFlag) {
-    $processFunction = ($data_source === 'tvmao') ? 'processTvmaoJsonData' : 
-                       ($data_source === 'cntv' ? 'processCntvJsonData' : null);
-    if ($processFunction) {
-        $allChannelProgrammes = $processFunction($data_str);
-        foreach ($allChannelProgrammes as $channelId => $channelProgrammes) {
-            $processCount = $channelProgrammes['process_count'];
-            if ($processCount) {
-                insertDataToDatabase([$channelId => $channelProgrammes], $db, $data_source, $replaceFlag);
-            }
-            logMessage($log_messages, "【{$data_source}】 {$channelProgrammes['channel_name']} " . 
-                        ($processCount ? "更新成功，共 {$processCount} 条" : "下载失败！！！"));
-        }
-    }
-}
-
-// 处理 tvmao 数据
-function processTvmaoJsonData($data_str) {
-    $tvmaostr = str_ireplace('tvmao,', '', $data_str);
-    
-    $channelProgrammes = [];
-    foreach (explode(',', $tvmaostr) as $tvmao_info) {
-        list($channelName, $channelId) = array_map('trim', explode(':', trim($tvmao_info)) + [null, $tvmao_info]);
-        $channelProgrammes[$channelId]['channel_name'] = cleanChannelName($channelName);
-
-        $json_url = "https://sp0.baidu.com/8aQDcjqpAAV3otqbppnN2DJv/api.php?query={$channelId}&resource_id=12520&format=json";
-        $json_data = downloadData($json_url);
-        $json_data = mb_convert_encoding($json_data, 'UTF-8', 'GBK');
-        $data = json_decode($json_data, true);
-        if (empty($data['data'])) {
-            $channelProgrammes[$channelId]['process_count'] = 0;
-            continue;
-        }
-        $data = $data['data'][0]['data'];
-        $skipTime = null;
-        foreach ($data as $epg) {
-            if ($time_str = $epg['times'] ?? '') {
-                $starttime = DateTime::createFromFormat('Y/m/d H:i', $time_str);
-                $date = $starttime->format('Y-m-d');
-                // 如果第一条数据早于今天 02:00，则认为今天的数据是齐全的
-                if (is_null($skipTime)) {
-                    $skipTime = $starttime < new DateTime("today 02:00") ? 
-                                new DateTime("today 00:00") : new DateTime("tomorrow 00:00");
-                }
-                if ($starttime < $skipTime) continue;
-                $channelProgrammes[$channelId]['diyp_data'][$date][] = [
-                    'start' => $starttime->format('H:i'),
-                    'end' => '',  // 初始为空
-                    'title' => trim($epg['title']),
-                    'desc' => ''
-                ];
-            }
-        }
-        // 填充 'end' 字段
-        foreach ($channelProgrammes[$channelId]['diyp_data'] as $date => &$programmes) {
-            foreach ($programmes as $i => &$programme) {
-                $nextStart = $programmes[$i + 1]['start'] ?? '00:00';  // 下一个节目开始时间或 00:00
-                $programme['end'] = $nextStart;  // 填充下一个节目的 'start'
-                if ($nextStart === '00:00') {
-                    // 尝试获取第二天数据并补充
-                    $nextDate = (new DateTime($date))->modify('+1 day')->format('Y-m-d');
-                    $nextDayProgrammes = $channelProgrammes[$channelId]['diyp_data'][$nextDate] ?? [];
-                    if (!empty($nextDayProgrammes) && $nextDayProgrammes[0]['start'] !== '00:00') {
-                        array_unshift($channelProgrammes[$channelId]['diyp_data'][$nextDate], [
-                            'start' => '00:00',
-                            'end' => '',
-                            'title' => $programme['title'],
-                            'desc' => ''
-                        ]);
-                    }
-                }
-            }
-        }
-        $channelProgrammes[$channelId]['process_count'] = count($data);
-    }
-    return $channelProgrammes;
-}
-
-// 处理 cntv 数据
-function processCntvJsonData($data_str) {
-    $date_range = 1;
-    if (preg_match('/^cntv:(\d+),\s*(.*)$/i', $data_str, $matches)) {
-        $date_range = $matches[1]; // 提取日期范围
-        $cntvstr = $matches[2]; // 提取频道字符串
-    } else {
-        $cntvstr = str_ireplace('cntv,', '', $data_str); // 没有日期范围时去除 'cntv,'
-    }
-    $need_dates = array_map(function($i) { return (new DateTime())->modify("+$i day")->format('Ymd'); }, range(0, $date_range - 1));
-
-    $channelProgrammes = [];
-    foreach (explode(',', $cntvstr) as $cntv_info) {
-        list($channelName, $channelId) = array_map('trim', explode(':', trim($cntv_info)) + [null, $cntv_info]);
-        $channelId = strtolower($channelId);
-        $channelProgrammes[$channelId]['channel_name'] = cleanChannelName($channelName);
-
-        $processCount = 0;
-        foreach ($need_dates as $need_date) {
-            $json_url = "https://api.cntv.cn/epg/getEpgInfoByChannelNew?c={$channelId}&serviceId=tvcctv&d={$need_date}";
-            $json_data = downloadData($json_url);
-            $data = json_decode($json_data, true);
-            if (!isset($data['data'][$channelId]['list'])) {
-                continue;
-            }
-            $data = $data['data'][$channelId]['list'];
-            foreach ($data as $epg) {
-                $starttime = (new DateTime())->setTimestamp($epg['startTime']);
-                $endtime = (new DateTime())->setTimestamp($epg['endTime']);
-                $date = $starttime->format('Y-m-d');
-                $channelProgrammes[$channelId]['diyp_data'][$date][] = [
-                    'start' => $starttime->format('H:i'),
-                    'end' => $endtime->format('H:i'),
-                    'title' => trim($epg['title']),
-                    'desc' => ''
-                ];
-            }
-            $processCount += count($data);
-        }
-        $channelProgrammes[$channelId]['process_count'] = $processCount;
-    }
-
-    return $channelProgrammes;
-}
-
 // 插入数据到数据库
-function insertDataToDatabase($channelsData, $db, $sourceUrl, $replaceFlag = true) {
+function insertDataToDatabase($channelsData, $db, $sourceUrl) {
     global $processedRecords;
     global $Config;
 
@@ -358,7 +254,7 @@ function insertDataToDatabase($channelsData, $db, $sourceUrl, $replaceFlag = tru
             ], JSON_UNESCAPED_UNICODE);
 
             // 当天及未来数据覆盖，其他日期数据忽略
-            $action = $date >= date('Y-m-d') && $replaceFlag ? 'REPLACE' : 'IGNORE';
+            $action = $date >= date('Y-m-d') ? 'REPLACE' : 'IGNORE';
 
             // 根据数据库类型选择 SQL 语句
             if ($Config['db_type'] === 'sqlite') {

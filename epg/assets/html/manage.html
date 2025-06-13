@@ -201,7 +201,7 @@
     <div class="modal-content access-log-modal-content">
         <span class="close">&times;</span>
         <h2>访问日志</h2>
-        <p id="accessLogContent" style="height: 405px; overflow: auto; font-family: monospace; line-height: 1.5;"></p>
+        <p id="accessLogContent" style="height: 413px; overflow: auto; font-family: monospace; line-height: 1.5;"></p>
         <div class="button-container">
             <button type="button" onclick="showAccessStats()">访问统计</button>
             <button type="button" onclick="clearAccessLog()">清空日志</button>
@@ -702,7 +702,7 @@
         <div class="row">
             <div class="column">
                 <label for="cht_to_chs" title="">繁體转简体：</label>
-                <select id="cht_to_chs" name="cht_to_chs" required>
+                <select id="cht_to_chs" name="cht_to_chs" required onchange="chtToChsChanged(this)">
                     <option value="0" <?php echo ($Config['cht_to_chs'] ?? 1) == 0 ? 'selected' : '' ?>>关闭</option>
                     <option value="1" <?php echo ($Config['cht_to_chs'] ?? 1) == 1 ? 'selected' : '' ?>>仅频道名</option>
                     <option value="2" <?php echo ($Config['cht_to_chs'] ?? 1) == 2 ? 'selected' : '' ?>>所有信息</option>
@@ -710,14 +710,14 @@
             </div>
             <div class="column">
                 <label for="db_type">数据库：</label>
-                <select id="db_type" name="db_type" required onchange="changeDbType()">
+                <select id="db_type" name="db_type" required onchange="changeDbType(this)">
                     <option value="sqlite" <?php echo ($Config['db_type'] ?? 'sqlite') == 'sqlite' ? 'selected' : ''?>>SQLite</option>
                     <option value="mysql" <?php echo ($Config['db_type'] ?? 'sqlite') == 'mysql' ? 'selected' : ''?>>MySQL</option>
                 </select>
             </div>
             <div class="column">
                 <label for="cached_type">数据缓存：</label>
-                <select id="cached_type" name="cached_type" required onchange="changeCachedType()">
+                <select id="cached_type" name="cached_type" required onchange="changeCachedType(this)">
                     <option value="memcached" <?php echo ($Config['cached_type'] ?? 'memcached') == 'memcached' ? 'selected' : ''?>>Memcached</option>
                     <option value="redis" <?php echo ($Config['cached_type'] ?? 'memcached') == 'redis' ? 'selected' : ''?>>Redis</option>
                 </select>
@@ -743,10 +743,23 @@
             </div>
             <div class="column">
                 <label for="debug_mode">调试模式：</label>
-                <select id="debug_mode" name="debug_mode" required>
+                <select id="debug_mode" name="debug_mode" required onchange="debugMode(this)">
                     <option value="1" <?php if (isset($Config['debug_mode']) && $Config['debug_mode'] == 1) echo 'selected'; ?>>是</option>
                     <option value="0" <?php if (!isset($Config['debug_mode']) || $Config['debug_mode'] == 0) echo 'selected'; ?>>否</option>
                 </select>
+            </div>
+        </div>
+
+        <!-- 第五行 -->
+        <div class="row">
+            <div class="column">
+                <a href="assets/tinyfilemanager/index.php?p=data&edit=customSource.php&env=ace" target="_blank" class="blue-span">
+                    编辑自定义数据源
+                </a>                  
+            </div>
+            <div class="column">
+            </div>
+            <div class="column">
             </div>
         </div>
 

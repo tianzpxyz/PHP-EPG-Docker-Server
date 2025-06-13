@@ -20,8 +20,9 @@ header('X-Accel-Buffering: no');
 echo '<link rel="icon" href="assets/img/favicon.ico" type="image/x-icon">';
 echo '<title>更新数据</title>';
 
-// 引入公共脚本
+// 引入脚本
 require_once 'public.php';
+require_once 'scraper.php';
 
 // 设置超时时间为20分钟
 set_time_limit(20*60);
@@ -470,12 +471,6 @@ function processIconListAndXmltv($db, $gen_list_mapping, &$log_messages) {
 
     // 所有频道数据写入完成后，生成 t.xml.gz 文件
     compressXmlFile($xmlFilePath);
-    
-    // 建立 xmltv 软链接
-    if (!file_exists($xmlLinkPath = __DIR__ . '/t.xml')) {
-        symlink($xmlFilePath, $xmlLinkPath);
-        symlink($xmlFilePath . '.gz', $xmlLinkPath . '.gz');
-    }
 
     logMessage($log_messages, "【预告文件】 已生成 t.xml、t.xml.gz");
 }
@@ -535,10 +530,14 @@ foreach ($Config['xml_urls'] as $xml_url) {
     $xml_url = trim($xml_url);
     if (empty($xml_url) || strpos($xml_url, '#') === 0) {
         continue;
-    } elseif (preg_match('/^(tvmao|cntv)/i', $xml_url, $matches)) {
-        $data_source = strtolower($matches[0]);
-        downloadJSONData($data_source, $xml_url, $db, $log_messages);
-        continue;
+    }
+
+    // 匹配自定义数据源
+    foreach ($sourceHandlers as $source => $info) {
+        if (isset($info['match']) && is_callable($info['match']) && $info['match']($xml_url)) {
+            scrapeSource($source, $xml_url, $db, $log_messages);
+            continue 2; // 匹配到后跳出外层循环
+        }
     }
 
     // 更新 XML 数据
