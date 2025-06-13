@@ -346,6 +346,18 @@ function fetchHandler($query_params) {
     $cleanChannelName = cleanChannelName($oriChannelName, $t2s = ($Config['cht_to_chs'] ?? false));
     $date = getFormatTime(preg_replace('/\D+/', '', $query_params['date'] ?? ''))['date'] ?? getNowDate();
 
+    // 处理台标请求
+    if (($query_params['type'] ?? '') === 'icon') {
+        $iconUrl = iconUrlMatch($cleanChannelName) ?? iconUrlMatch($oriChannelName);
+        if ($iconUrl) {
+            header("Location: " . preg_replace('#(/data/icon/.*)#', $serverUrl . '$1', $iconUrl));
+        } else {
+            http_response_code(404);
+            echo "Icon not found.";
+        }
+        exit();
+    }
+
     // 频道为空时，返回 xml.gz 文件
     if ($cleanChannelName === '') {
         if ($Config['gen_xml'] ?? 0) {
