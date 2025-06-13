@@ -401,22 +401,26 @@ function updateCronLogContent(logData) {
 
 let lastOffset = 0, timer = null;
 
+// 关闭繁體转简体时提示
+function chtToChsChanged(selectElem) {
+    if (selectElem.value === '0') {showMessageModal('将不支持繁简频道匹配');}
+}
+
 // 修改数据库相关信息
-function changeDbType() {
-    if (document.getElementById('db_type').value === 'sqlite') return;
+function changeDbType(selectElem) {
+    if (selectElem.value === 'sqlite') return;
     showModalWithMessage('mysqlConfigModal');
 }
 
 // 修改数据缓存相关信息
-function changeCachedType() {
-    const select = document.getElementById('cached_type');
-    if (select.value === 'memcached') return;
+function changeCachedType(selectElem) {
+    if (selectElem.value === 'memcached') return;
     showModalWithMessage('redisConfigModal');
     setTimeout(() => {
-        redisConfigModal.querySelector('.close')?.addEventListener('mousedown', () => select.value = 'memcached');
+        redisConfigModal.querySelector('.close')?.addEventListener('mousedown', () => selectElem.value = 'memcached');
         window.addEventListener('mousedown', function handler(e) {
             if (e.target === redisConfigModal) {
-                select.value = 'memcached';
+                selectElem.value = 'memcached';
                 window.removeEventListener('mousedown', handler);
             }
         });
@@ -1054,6 +1058,7 @@ document.getElementById('liveSourceFile').addEventListener('change', function() 
         .then(data => {
             if (data.success) {
                 showModal('live');
+                showMessageModal('上传成功，请重新解析');
             } else {
                 showMessageModal('上传失败: ' + data.message);
             }
@@ -1690,10 +1695,9 @@ function showTokenRangeMessage(token, serverUrl) {
 }
 
 // 监听 debug_mode 更变
-document.getElementById("debug_mode").addEventListener("change", function () {
-    const show = this.value === "1";
-    document.getElementById("accessLogBtn").style.display = show ? "inline-block" : "none";
-});
+function debugMode(selectElem) {
+    document.getElementById("accessLogBtn").style.display = selectElem.value === "1" ? "inline-block" : "none";
+}
 
 // 切换主题
 document.getElementById('themeSwitcher').addEventListener('click', function() {
