@@ -29,7 +29,7 @@ PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带�
 
 📝 **节目单生成**：支持生成指定频道节目单并匹配 M3U 的 xmltv 格式文件。
 
-🗂️ **兼容多种格式**：支持不同标准格式的 XMLTV 文件。
+🗂️ **兼容多种格式**：支持不同标准格式的 XMLTV 文件，支持自定义数据源。
 
 🛠️ **文件管理**：集成 tinyfilemanager 以便于文件管理。
 
@@ -43,6 +43,8 @@ PHP 实现的 EPG（电子节目指南）服务端， `Docker` 部署，自带�
 > `xmltv` 用户使用方法：[【一键生成】匹配 M3U 文件的 XML 节目单](https://www.right.com.cn/forum/thread-8392662-1-1.html) 
 >
 > `直播源管理` 使用方法：[【EPG-Server】直播源管理使用说明](https://www.right.com.cn/forum/thread-8417162-1-1.html) 
+>
+> `自定数据源` 使用方法：[【EPG-Server】自定义数据源（timetv、51livetv、diyp）](https://www.right.com.cn/forum/thread-8432214-1-1.html)
 
 <picture>
   <source
@@ -163,19 +165,22 @@ docker run -d --name php-epg-update -v /var/run/docker.sock:/var/run/docker.sock
 
 1. 在浏览器中打开 `http://{服务器IP地址}:5678/manage.php`
 2. **默认密码为空**，根据需要自行设置
-3. 添加 `EPG 源地址`， GitHub 源确保能够访问，点击 `更新配置` 保存
-4. 点击 `更新数据库` 拉取数据，点击 `数据库更新日志` 查看日志，点击 `查看数据库` 查看具体条目
-5. 设置 `定时任务` ，点击 `更新配置` 保存，点击 `定时任务日志` 查看定时任务时间表
+3. 添加 `EPG 地址`， GitHub 源确保能够访问，点击 `保存配置` 保存
+4. 点击 `更新数据` 拉取数据，点击 `更新日志` 查看日志，点击 `频道管理` 查看具体条目
+5. 设置 `定时任务` ，点击 `保存配置` 保存，点击 `定时日志` 查看定时任务时间表
 
     > 建议从 `凌晨1点` 左右开始抓，很多源 `00:00 ~ 00:30` 都是无数据。
     > 隔 `6 ~ 12` 小时抓一次即可。
 
-6. 点击 `更多设置` ，选择是否 `生成xml文件` 、`生成方式` ，设置 `限定频道节目单`
-7. 用浏览器测试各个接口的返回结果是否正确：
+6. 点击 `更多设置`，选择是否 `生成xml文件`、`xml内容`，设置`匹配频道列表`
+7. 测试各个接口的返回结果是否正确：
 
-- `xmltv` 接口： `http://{服务器IP地址}:5678/index.php`
-- `DIYP&百川` 接口： `http://{服务器IP地址}:5678/index.php?ch=CCTV1`
-- `超级直播` 接口： `http://{服务器IP地址}:5678/index.php?channel=CCTV1`
+- `xmltv` 接口：`http://{服务器IP地址}:5678/index.php`
+- `DIYP&百川` 接口：`http://{服务器IP地址}:5678/index.php?ch=CCTV1`
+- `超级直播` 接口：`http://{服务器IP地址}:5678/index.php?channel=CCTV1`
+- `tvbox` 接口：
+  - `"epg":"http://{服务器IP地址}:5678/index.php?ch={name}&date={date}"`
+  - `"logo":"http://{服务器IP地址}:5678/index.php?ch={name}&type=icon"`
 
 8. 将 **`http://{服务器IP地址}:5678/index.php`** 填入 `DIYP`、`TiviMate` 等软件的 `EPG 地址栏`
 
