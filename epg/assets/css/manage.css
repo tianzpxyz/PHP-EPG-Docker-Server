@@ -193,6 +193,7 @@ input[type="tel"] {
 input[type="tel"] {
     padding: 0px;
     height: 32px;
+    font-size: 15px;
     margin-bottom: 0px;
 }
 
@@ -245,7 +246,8 @@ input[type="tel"] {
     padding-left: 25px;
 }
 
-.cron-log-modal-content {
+.cron-log-modal-content,
+.more-live-setting-modal-content {
     width: 450px;
 }
 
@@ -446,6 +448,17 @@ h2, span, label {
     white-space: nowrap; /* 禁止换行 */
     scrollbar-width: none; /* 隐藏滚动条 */
     resize: none;
+}
+
+.limited-row {
+    max-height: 6em;  /* 限制约4行 */
+    overflow: hidden;
+    white-space: pre-wrap;
+    word-break: break-all;
+    transition: max-height 0.3s ease;
+}
+.limited-row.expanded {
+    max-height: none !important;
 }
 
 /* 分页控件样式 */
