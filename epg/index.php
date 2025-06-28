@@ -106,18 +106,19 @@ if (!$accessDenied && !empty($Config['ip_list_mode'])) {
 }
 
 // 记录访问日志
-if ($Config['debug_mode'] ?? 0) {
-    $logFile = __DIR__ . '/data/access.log';
+if (!empty($Config['debug_mode'])) {
     $time = date('Y-m-d H:i:s');
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
     $url = rawurldecode($_SERVER['REQUEST_URI'] ?? 'unknown');
+    $accessDeniedFlag = $accessDenied ? 1 : 0;
+    $denyMsg = $accessDenied ? $denyMessage : null;
 
-    $log = "[$time] [$clientIp] ";
-    if ($accessDenied) $log .= $denyMessage;
-    $log .= "[$method] $url | UA: $userAgent\n";
+    $stmt = $db->prepare("INSERT INTO access_log 
+        (access_time, client_ip, method, url, user_agent, access_denied, deny_message) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)");
 
-    file_put_contents($logFile, $log, FILE_APPEND);
+    $stmt->execute([$time, $clientIp, $method, $url, $userAgent, $accessDeniedFlag, $denyMsg]);
 }
 
 // 拒绝访问并结束脚本
