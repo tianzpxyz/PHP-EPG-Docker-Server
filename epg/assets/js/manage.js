@@ -12,8 +12,8 @@ document.getElementById('settingsForm').addEventListener('submit', function(even
 
     const fields = ['update_config', 'gen_xml', 'include_future_only', 'ret_default', 'cht_to_chs', 
         'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 'cached_type', 'gen_list_enable', 
-        'check_update', 'token_range', 'user_agent_range', 'debug_mode', 'ip_list_mode', 'live_template_enable', 
-        'live_fuzzy_match', 'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 
+        'check_update', 'token_range', 'user_agent_range', 'debug_mode', 'ip_list_mode', 'live_source_config', 
+        'live_template_enable', 'live_fuzzy_match', 'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 
         'live_tvg_name_enable', 'live_source_auto_sync', 'live_channel_name_process', 'gen_live_update_time', 
         'm3u_icon_first', 'check_ipv6', 'min_resolution_width', 'min_resolution_height', 'urls_limit','sort_by_delay', 
         'check_speed_auto_sync', 'check_speed_interval_factor'];
@@ -399,8 +399,6 @@ function updateCronLogContent(logData) {
     logContent.scrollTop = logContent.scrollHeight;
 }
 
-let lastOffset = 0, timer = null;
-
 // 关闭繁體转简体时提示
 function chtToChsChanged(selectElem) {
     if (selectElem.value === '0') {showMessageModal('将不支持繁简频道匹配');}
@@ -453,6 +451,8 @@ async function saveAndTestRedisConfig() {
       showMessageModal('请求失败，已恢复为 Memcached');
     }
 }
+
+let lastOffset = 0, timer = null;
 
 // 显示访问日志
 function showAccessLogModal() {
@@ -514,47 +514,16 @@ let currentSort = { column: 'total', order: 'desc' };
 let cachedData = { ipData: [], dates: [], rawStats: {} };
 
 function loadAccessStats() {
-    const table = document.getElementById("accessStatsTable");
-    const tbody = table.querySelector("tbody");
+    const tbody = document.querySelector("#accessStatsTable tbody");
     tbody.innerHTML = `<tr><td colspan="99">加载中...</td></tr>`;
 
-    const logContent = document.getElementById("accessLogContent").innerText || '';
-    const lines = logContent.split('\n').filter(line => line.trim());
-
-    const statsByDate = {};
-    const ipTotal = {};
-    const ipDeny = {};
-
-    const logRegex = /^\[(\d{4}-\d{2}-\d{2})[^\]]*\] \[(.*?)\]/;
-
-    lines.forEach(line => {
-        const match = line.match(logRegex);
-        if (!match) return;
-    
-        const [_, date, ip] = match;
-    
-        statsByDate[date] = statsByDate[date] || {};
-        statsByDate[date][ip] = (statsByDate[date][ip] || 0) + 1;
-    
-        ipTotal[ip] = (ipTotal[ip] || 0) + 1;
-
-        if (line.includes("访问被拒绝")) {
-            ipDeny[ip] = (ipDeny[ip] || 0) + 1;
-        }
-    });
-
-    const ips = Object.keys(ipTotal);
-    const dates = Object.keys(statsByDate).sort();
-
-    const ipData = ips.map(ip => {
-        const counts = dates.map(date => statsByDate[date]?.[ip] || 0);
-        const total = counts.reduce((a, b) => a + b, 0);
-        const deny = ipDeny[ip] || 0;
-        return { ip, counts, total, deny };
-    });
-
-    cachedData = { ipData, dates, rawStats: statsByDate };
-    renderAccessStatsTable();
+    fetch('manage.php?get_access_stats=true')
+        .then(res => res.json())
+        .then(d => {
+            if (!d.success) return;
+            cachedData = { ipData: d.ipData, dates: d.dates };
+            renderAccessStatsTable();
+        });
 }
 
 function renderAccessStatsTable() {
@@ -885,18 +854,18 @@ function displayPage(data, page) {
                 // 处理 disable 和 modified 列
                 if (col === 'disable' || col === 'modified') {
                     cellContent = item[col] == 1 ? '是' : '否';
-                    cellClass = (col === 'disable' && item[col] == 1) 
-                        ? 'table-cell-disable' 
-                        : (col === 'modified' && item[col] == 1) 
-                        ? 'table-cell-modified' 
+                    cellClass = (col === 'disable' && item[col] == 1)
+                        ? 'table-cell-disable'
+                        : (col === 'modified' && item[col] == 1)
+                        ? 'table-cell-modified'
                         : 'table-cell-clickable';
                 }
-
+        
                 const editable = ['resolution', 'speed', 'disable', 'modified'].includes(col) ? '' : 'contenteditable="true"';
                 const clickableClass = (col === 'disable' || col === 'modified') ? 'table-cell-clickable' : '';
-
+        
                 return `<td ${editable} class="${clickableClass} ${cellClass}">
-                            ${cellContent}
+                            <div class="limited-row">${cellContent}</div>
                         </td>`;
             }).join('')}
         `;
@@ -945,6 +914,20 @@ function displayPage(data, page) {
     
         tableBody.appendChild(row);
     });
+
+    // 为单元格添加鼠标点击事件
+    tableBody.addEventListener('focusin', e => {
+        const td = e.target.closest('td')
+        if (!td) return
+        const tr = td.closest('tr')
+        tr.querySelectorAll('.limited-row').forEach(d => d.classList.add('expanded'))
+    })
+    tableBody.addEventListener('focusout', e => {
+        const td = e.target.closest('td')
+        if (!td) return
+        const tr = td.closest('tr')
+        tr.querySelectorAll('.limited-row').forEach(d => d.classList.remove('expanded'))
+    })
 }
 
 // 创建分页控件
@@ -1029,12 +1012,19 @@ function filterLiveSourceData() {
 function updateLiveSourceModal(data) {
     document.getElementById('sourceUrlTextarea').value = data.source_content || '';
     document.getElementById('liveTemplateTextarea').value = data.template_content || '';
+    document.getElementById('live_source_config').innerHTML = data.config_options_html;
     const channels = Array.isArray(data.channels) ? data.channels : [];
     allLiveData = channels;  // 将所有数据保存在全局变量中
     filteredLiveData = allLiveData; // 初始化过滤结果
     currentPage = 1; // 重置为第一页
     displayPage(channels, currentPage); // 显示第一页数据
     setupPagination(channels); // 初始化分页控件
+}
+
+// 更新直播源配置
+function onLiveSourceConfigChange() {
+    const selectedConfig = document.getElementById('live_source_config').value;
+    fetchData(`manage.php?get_live_data=true&live_source_config=${selectedConfig}`, updateLiveSourceModal);
 }
 
 // 上传直播源文件
@@ -1070,18 +1060,22 @@ document.getElementById('liveSourceFile').addEventListener('change', function() 
 
 // 保存编辑后的直播源地址
 function saveLiveSourceFile() {
-    source = document.getElementById('sourceUrlTextarea');
+    const source = document.getElementById('sourceUrlTextarea');
     const sourceContent = source.value.replace(/^\s*[\r\n]+/gm, '').replace(/\n$/, '');
     source.value = sourceContent;
 
-    // 内容写入 source.txt 文件
+    const liveSourceConfig = document.getElementById('live_source_config').value;
+    const updateObj = {};
+    updateObj[liveSourceConfig] = sourceContent.split('\n');
+
+    // 内容写入 source.json 文件
     fetch('manage.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
             save_content_to_file: 'true',
-            file_path: '/data/live/source.txt',
-            content: sourceContent
+            file_path: '/data/live/source.json',
+            content: JSON.stringify(updateObj)
         })
     })
     .catch(error => {
@@ -1092,8 +1086,9 @@ function saveLiveSourceFile() {
 document.getElementById('sourceUrlTextarea').addEventListener('blur', saveLiveSourceFile);
 
 // 保存编辑后的直播源信息
-function saveLiveSourceInfo(popup = true, filePath = '') {
-    // 获取 checkbox 配置
+function saveLiveSourceInfo() {
+    // 获取配置
+    const liveSourceConfig = document.getElementById('live_source_config').value;
     const liveTvgLogoEnable = document.getElementById('live_tvg_logo_enable').value;
     const liveTvgIdEnable = document.getElementById('live_tvg_id_enable').value;
     const liveTvgNameEnable = document.getElementById('live_tvg_name_enable').value;
@@ -1104,62 +1099,109 @@ function saveLiveSourceInfo(popup = true, filePath = '') {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
             save_source_info: 'true',
+            live_source_config: liveSourceConfig,
             live_tvg_logo_enable: liveTvgLogoEnable,
             live_tvg_id_enable: liveTvgIdEnable,
             live_tvg_name_enable: liveTvgNameEnable,
-            file_path: filePath,
             content: JSON.stringify(allLiveData)
         })
     })
     .then(response => response.json())
     .then(data => {
-        if (popup) {
-            showMessageModal(data.success ? '保存成功<br>已生成 M3U 及 TXT 文件' : '保存失败');
-        }
+        showMessageModal(data.success ? '保存成功<br>已生成 M3U 及 TXT 文件' : '保存失败');
     })
     .catch(error => {
-        if (popup) {
-            showMessageModal('保存过程中出现错误: ' + error);
-        }
+        showMessageModal('保存过程中出现错误: ' + error);
     });
 }
 
-// 直播源信息另存为新文件
-function saveLiveSourceInfoAs() {
+// 新建或另存直播源配置
+function openLiveSourceConfigDialog(isNew = false) {
     showMessageModal('');
     document.getElementById('messageModalMessage').innerHTML = `
         <div style="width: 180px;">
-            <h3>另存为</h3>
-            <input type="text" value="" id="fileName" style="text-align: center; font-size: 15px; margin-bottom: 15px;" />
-            <button id="confirmBtn" style="margin-bottom: -10px;">确认</button>
+            <h3>${isNew ? '新建配置' : '另存为新配置'}</h3>
+            <input type="text" value="" id="newConfigName" placeholder="请输入配置名"
+                style="text-align: center; font-size: 15px; margin-bottom: 15px;" />
+            <div class="button-container" style="text-align: center; margin-bottom: -10px;">
+                <button id="confirmBtn">确认</button>
+                <button onclick="document.getElementById('messageModal').style.display='none'">取消</button>
+            </div>
         </div>
     `;
 
-    // 添加按钮点击事件，点击后另存为新文件
-    document.getElementById('confirmBtn').onclick = function () {
-        fileName = document.getElementById('fileName').value;
-        saveLiveSourceInfo(popup = false, fileName);
-    
-        // 检查并添加 fileName 到文本框
-        let t = document.getElementById('sourceUrlTextarea');
-        if (!t.value.split('\n').some(line => line.replace(/[#\s]/g, '').trim() === fileName)) {
-            t.value += `\n# ${fileName}`;
-            t.scrollTop = t.scrollHeight;
-            saveLiveSourceFile();
+    document.getElementById('newConfigName').focus();
+    document.getElementById('confirmBtn').onclick = () => {
+        const liveSourceConfig = document.getElementById('newConfigName').value.trim();
+        if (!liveSourceConfig) {
+            showMessageModal('请输入配置名');
+            return;
         }
+        const select = document.getElementById('live_source_config');
+        const oldConfig = select.value.trim();
+        if (![...select.options].some(o => o.value === liveSourceConfig)) {
+            select.add(new Option(liveSourceConfig, liveSourceConfig));
+        }
+        select.value = liveSourceConfig;
 
-        [token, serverUrl, tokenRange] = document.getElementById('showLiveUrlBtn')
-            .getAttribute('onclick')
-            .match(/\`(.*?)\`/g)
-            .map(s => s.slice(1, -1));
-        token = token.split('\n')[0];
-        var tokenStr = (tokenRange == 1 || tokenRange == 3) ? `token=${token}` : '';
-        var m3uUrl = `${serverUrl}/tv.m3u?${tokenStr}&url=${fileName}`;
-        var txtUrl = `${serverUrl}/tv.txt?${tokenStr}&url=${fileName}`;
-        message = `成功另存为 ${fileName}<br>
-                    M3U：<br><a href="${m3uUrl}" target="_blank">${m3uUrl}</a><br>
-                    TXT：<br><a href="${txtUrl}" target="_blank">${txtUrl}`;
-        showMessageModal(message);
+        fetch('manage.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                create_source_config: 'true',
+                old_source_config: oldConfig,
+                new_source_config: liveSourceConfig,
+                is_new: isNew
+            })
+        })
+        .then(() => {
+            showModal('live', false);
+        })
+        .catch(error => {
+            showMessageModal('保存过程中出现错误: ' + error);
+        });
+
+        document.getElementById('showLiveUrlBtn').click();
+    };
+}
+
+// 删除直播源配置
+function deleteSource() {
+    const select = document.getElementById('live_source_config');
+    const configName = select.value;
+    if (!configName) return;
+
+    if (configName === 'default') {
+        showMessageModal('默认配置不能删除！');
+        return;
+    }
+
+    showMessageModal('');
+    document.getElementById('messageModalMessage').innerHTML = `
+        <div style="width: 300px; text-align: center;">
+            <h3>确认删除</h3>
+            <p>确定删除配置 "${configName}"？此操作不可恢复。</p>
+            <div class="button-container">
+                <button id="confirmBtn">确认</button>
+                <button id="cancelBtn">取消</button>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('confirmBtn').onclick = () => {
+        fetch(`manage.php?delete_source_config=true&live_source_config=${encodeURIComponent(configName)}`)
+            .then(() => {
+                const i = select.selectedIndex;
+                select.remove(i);
+                select.selectedIndex = i >= select.options.length ? i - 1 : i;
+                onLiveSourceConfigChange();
+            })
+            .catch(err => showMessageModal('删除失败：' + err));
+        document.getElementById('messageModal').style.display = 'none';
+    };
+
+    document.getElementById('cancelBtn').onclick = () => {
+        document.getElementById('messageModal').style.display = 'none';
     };
 }
 
@@ -1181,14 +1223,13 @@ function cleanUnusedSource() {
 
 // 显示直播源地址
 function showLiveUrl(token, serverUrl, tokenRange) {
-    var tokenStr = (tokenRange == 1 || tokenRange == 3) ? `?token=${token}` : '';
-    var m3uUrl = `${serverUrl}/tv.m3u${tokenStr}`;
-    var txtUrl = `${serverUrl}/tv.txt${tokenStr}`;
-    message = `M3U：<br><a href="${m3uUrl}" target="_blank">${m3uUrl}</a>
-                &ensp;<a href="${m3uUrl}" download="tv.m3u">下载</a><br>
-                TXT：<br><a href="${txtUrl}" target="_blank">${txtUrl}</a>
-                &ensp;&ensp;<a href="${txtUrl}" download="tv.txt">下载</a><br>
-                转换：<br>${m3uUrl}&url=xxx<br>${txtUrl}&url=xxx`;
+    const config = document.getElementById('live_source_config').value.trim();
+    const tokenStr = (tokenRange == 1 || tokenRange == 3) ? `token=${token}&` : '';
+    const m3uUrl = `${serverUrl}/tv.m3u?${tokenStr}url=${config}`;
+    const txtUrl = `${serverUrl}/tv.txt?${tokenStr}url=${config}`;
+    const message = 
+        `M3U：<br><a href="${m3uUrl}" target="_blank">${m3uUrl}</a>&ensp;<a href="${m3uUrl}" download="tv.m3u">下载</a><br>` +
+        `TXT：<br><a href="${txtUrl}" target="_blank">${txtUrl}</a>&ensp;<a href="${txtUrl}" download="tv.txt">下载</a><br>`;
     showMessageModal(message);
 }
 
@@ -1214,15 +1255,17 @@ function saveLiveTemplate() {
         })
     });
 
-    // 内容写入 template.txt 文件
-    liveTemplateContent = document.getElementById('liveTemplateTextarea').value;
+    // 内容写入 template.json 文件
+    const liveSourceConfig = document.getElementById('live_source_config').value;
+    const updateObj = {};
+    updateObj[liveSourceConfig] = document.getElementById('liveTemplateTextarea').value.split('\n');
     fetch('manage.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
             save_content_to_file: 'true',
-            file_path: '/data/live/template.txt',
-            content: liveTemplateContent
+            file_path: '/data/live/template.json',
+            content: JSON.stringify(updateObj)
         })
     })
     .then(response => response.json())
