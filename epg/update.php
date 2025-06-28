@@ -40,8 +40,6 @@ function deleteOldData($db, $thresholdDate, &$log_messages) {
 
     // 删除 t.xml 和 t.xml.gz 文件
     if (!$Config['gen_xml']) {
-        @unlink(__DIR__ . '/t.xml');
-        @unlink(__DIR__ . '/t.xml.gz');
         @unlink(__DIR__ . '/data/t.xml');
         @unlink(__DIR__ . '/data/t.xml.gz');
     }
@@ -61,19 +59,15 @@ function deleteOldData($db, $thresholdDate, &$log_messages) {
     }
 
     // 清理访问日志
-    if ($Config['debug_mode'] && file_exists($accessLogPath = __DIR__ . '/data/access.log')) {
-        $lines = file($accessLogPath);
+    if ($Config['debug_mode']) {
         $thresholdTimestamp = strtotime($thresholdDate . ' 00:00:00');
-        $start = 0;
-        foreach ($lines as $i => $line) {
-            if (preg_match('/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/', $line, $m) && strtotime($m[1]) >= $thresholdTimestamp) {
-                $start = $i;
-                break;
-            }
-        }
-        $newLines = array_slice($lines, $start);
-        file_put_contents($accessLogPath, implode('', $newLines));
-        logMessage($log_messages, "【清理访问日志】 共 " . (count($lines) - count($newLines)) . " 条。");
+        $thresholdStr = date('Y-m-d H:i:s', $thresholdTimestamp);
+    
+        $stmt = $db->prepare("DELETE FROM access_log WHERE access_time < ?");
+        $stmt->execute([$thresholdStr]);
+    
+        $deletedCount = $stmt->rowCount();
+        logMessage($log_messages, "【清理访问日志】 共 $deletedCount 条。");
     }
     
     // 清理缓存数据
@@ -166,18 +160,16 @@ function getChannelBindEPG() {
 // 下载 XML 数据并存入数据库
 function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $white_list, $black_list, $timeZone) {
     global $Config;
-    $xml_data = downloadData($xml_url, $userAgent);
-    if ($xml_data !== false && stripos($xml_data, 'not found') === false) {
-        $mtimeStr = '';
+    [$xml_data, $error, $mtime] = downloadData($xml_url, $userAgent);
+    if ($xml_data !== false) {
         if (substr($xml_data, 0, 2) === "\x1F\x8B") { // 通过魔数判断 .gz 文件
-            if ($t = unpack('V', substr($xml_data, 4, 4))[1]) {
-                $mtimeStr = ' | 修改时间：' . date('Y-m-d H:i:s', $t);
-            }
+            $mtime = $mtime ?: unpack('V', substr($xml_data, 4, 4))[1];
             if (!($xml_data = gzdecode($xml_data))) {
                 logMessage($log_messages, '【解压失败】');
                 return;
             }
         }
+        $mtimeStr = $mtime ? ' | 修改时间：' . date('Y-m-d H:i:s', $mtime) : '';
 
         // 获取文件大小（字节）并转换为 KB/MB
         $fileSize = strlen($xml_data);
@@ -198,7 +190,7 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
             logMessage($log_messages, "【处理数据出错！！！】 " . $e->getMessage());
         }
     } else {
-        logMessage($log_messages, "【下载】 失败！！！");
+        logMessage($log_messages, "【下载】 失败！！！错误信息：$error");
     }
     echo "<br>";
 }
