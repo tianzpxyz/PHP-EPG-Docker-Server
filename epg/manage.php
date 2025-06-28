@@ -358,12 +358,19 @@ try {
                 $sourceJsonPath = $liveDir . 'source.json';
                 $templateJsonPath = $liveDir . 'template.json';
                 
-                if (!file_exists($sourceJsonPath) && file_exists($sourceTxtPath = $liveDir . 'source.txt')) {
-                    file_put_contents($sourceJsonPath, json_encode([
-                        'default' => array_values(array_filter(array_map('trim', file($sourceTxtPath))))
-                    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-                    @unlink($sourceTxtPath);
+                if (!file_exists($sourceJsonPath)) {
+                    $sourceTxtPath = $liveDir . 'source.txt';
+                    $default = file_exists($sourceTxtPath)
+                        ? array_values(array_filter(array_map('trim', file($sourceTxtPath))))
+                        : [];
+                
+                    file_put_contents($sourceJsonPath, json_encode(['default' => $default], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+                
+                    if (file_exists($sourceTxtPath)) {
+                        @unlink($sourceTxtPath);
+                    }
                 }
+                
                 if (!file_exists($templateJsonPath) && file_exists($templateTxtPath = $liveDir . 'template.txt')) {
                     file_put_contents($templateJsonPath, json_encode([
                         'default' => array_values(array_filter(array_map('trim', file($templateTxtPath))))
