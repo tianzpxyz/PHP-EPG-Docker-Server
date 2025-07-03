@@ -113,7 +113,7 @@ function updateConfigFields() {
         foreach (explode("\n", $mappings) as $line) {
             if ($line = trim($line)) {
                 list($search, $replace) = preg_split('/=》|=>/', $line);
-                $channel_mappings[trim($search)] = trim(str_replace("，", ",", trim($replace)), '[]');
+                $channel_mappings[trim($search)] = str_replace("，", ",", trim($replace));
             }
         }
     }
@@ -121,7 +121,7 @@ function updateConfigFields() {
     // 解析频道 EPG 数据
     $channel_bind_epg = isset($_POST['channel_bind_epg']) ? array_filter(array_reduce(json_decode($_POST['channel_bind_epg'], true), function($result, $item) {
         $epgSrc = preg_replace('/^【已停用】/', '', $item['epg_src']);
-        if (!empty($item['channels'])) $result[$epgSrc] = trim(str_replace("，", ",", trim($item['channels'])), '[]');
+        if (!empty($item['channels'])) $result[$epgSrc] = str_replace("，", ",", trim($item['channels']));
         return $result;
     }, [])) : $Config['channel_bind_epg'];
 
@@ -159,7 +159,7 @@ function updateConfigFields() {
     if ($oldConfig['start_time'] !== $start_time || $oldConfig['end_time'] !== $end_time || $oldConfig['interval_time'] !== $interval_time) {
         exec('php cron.php > /dev/null 2>/dev/null &');
     }
-
+    
     return ['db_type_set' => $db_type_set];
 }
 
@@ -174,9 +174,9 @@ try {
         $action_map = [
             'get_update_logs', 'get_cron_logs', 'get_channel', 'get_epg_by_channel',
             'get_icon', 'get_channel_bind_epg', 'get_channel_match', 'get_gen_list',
-            'get_live_data', 'parse_source_info', 'download_data', 'delete_unused_icons', 
-            'delete_unused_live_data', 'get_version_log', 'get_readme_content', 'get_access_log',
-            'clear_access_log'
+            'get_live_data', 'parse_source_info', 'download_source_data', 'delete_unused_icons', 
+            'delete_source_config', 'delete_unused_live_data', 'get_version_log', 'get_readme_content', 
+            'get_access_log', 'get_access_stats', 'clear_access_log', 'get_ip_list', 'test_redis'
         ];
         $action = key(array_intersect_key($_GET, array_flip($action_map))) ?: '';
 
@@ -195,8 +195,14 @@ try {
             case 'get_channel':
                 // 获取频道
                 $channels = $db->query("SELECT DISTINCT channel FROM epg_data ORDER BY channel ASC")->fetchAll(PDO::FETCH_COLUMN);
+
+                // 将频道忽略字符插入到频道列表的开头
+                $channel_ignore_chars = [
+                    ['original' => '【频道忽略字符】', 'mapped' => $Config['channel_ignore_chars'] ?? "&nbsp, -"]
+                ];
+
                 $channelMappings = $Config['channel_mappings'];
-                $mappedChannels = [];
+                $mappedChannels = $channel_ignore_chars;
                 foreach ($channelMappings as $mapped => $original) {
                     if (($index = array_search(strtoupper($mapped), $channels)) !== false) {
                         $mappedChannels[] = [
@@ -297,7 +303,8 @@ try {
                     echo json_encode(['ori_channels' => [], 'clean_channels' => [], 'match' => [], 'type' => []]);
                     exit;
                 }
-                $cleanChannels = explode("\n", t2s(implode("\n", array_map('cleanChannelName', $channels))));
+                $lines = implode("\n", array_map('cleanChannelName', $channels));
+                $cleanChannels = explode("\n", ($Config['cht_to_chs'] ?? false) ? t2s($lines) : $lines);
                 $epgData = $db->query("SELECT channel FROM epg_data")->fetchAll(PDO::FETCH_COLUMN);
                 $channelMap = array_combine($cleanChannels, $channels);
                 $matches = [];
@@ -309,7 +316,7 @@ try {
                         $matchResult = $cleanChannel;
                         $matchType = '精确匹配';
                         if ($cleanChannel !== $originalChannel) {
-                            $matchType = '别名/忽略';
+                            $matchType = '繁简/别名/忽略';
                         }
                     } else {
                         foreach ($epgData as $epgChannel) {
@@ -342,49 +349,71 @@ try {
                 break;
             
             case 'get_live_data':
-                // 读取文件内容
-                function readFileContent($filePath) {
-                    return file_exists($filePath) ? file_get_contents($filePath) : '';
+                // 读取直播源文件内容
+                if (isset($_GET['live_source_config'])) {
+                    $Config['live_source_config'] = $_GET['live_source_config'];
+                    file_put_contents($configPath, json_encode($Config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
                 }
-
-                $sourceContent = readFileContent($liveDir . 'source.txt');
-                $templateContent = readFileContent($liveDir . 'template.txt');
-
-                // 读取 CSV 文件并返回关联数组
-                function readCsvFile($filePath, $key = null) {
-                    if (!file_exists($filePath)) return [];
-
-                    $data = [];
-                    if (($file = fopen($filePath, 'r')) !== false) {
-                        $header = fgetcsv($file);
-                        while (($row = fgetcsv($file)) !== false) {
-                            if (empty(array_filter($row)) || count($row) !== count($header)) continue;
-
-                            $rowData = array_combine($header, $row);
-                            if ($key && isset($rowData[$key])) {
-                                $data[$rowData[$key]] = $rowData; // 使用指定键映射
-                            } else {
-                                $data[] = $rowData;
-                            }
-                        }
-                        fclose($file);
-                    }
-                    return $data;
-                }
-
-                $channelsInfo = readCsvFile($liveDir . 'channels_info.csv', 'tag');
-                $channelsData = readCsvFile($liveDir . 'channels.csv');
-
-                // 更新 channelsData 中的 resolution 和 speed
-                foreach ($channelsData as &$row) {
-                    if (isset($channelsInfo[$row['tag']])) {
-                        $row['resolution'] = str_replace("x", "<br>x<br>", $channelsInfo[$row['tag']]['resolution']);
-                        $row['speed'] = $channelsInfo[$row['tag']]['speed'];
-                        if (is_numeric($row['speed'])) { $row['speed'] .= '<br>ms';}
+                
+                $sourceJsonPath = $liveDir . 'source.json';
+                $templateJsonPath = $liveDir . 'template.json';
+                
+                if (!file_exists($sourceJsonPath)) {
+                    $sourceTxtPath = $liveDir . 'source.txt';
+                    $default = file_exists($sourceTxtPath)
+                        ? array_values(array_filter(array_map('trim', file($sourceTxtPath))))
+                        : [];
+                
+                    file_put_contents($sourceJsonPath, json_encode(['default' => $default], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+                
+                    if (file_exists($sourceTxtPath)) {
+                        @unlink($sourceTxtPath);
                     }
                 }
                 
-                $dbResponse = ['source_content' => $sourceContent, 'template_content' => $templateContent, 'channels' => $channelsData,];
+                if (!file_exists($templateJsonPath) && file_exists($templateTxtPath = $liveDir . 'template.txt')) {
+                    file_put_contents($templateJsonPath, json_encode([
+                        'default' => array_values(array_filter(array_map('trim', file($templateTxtPath))))
+                    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+                    @unlink($templateTxtPath);
+                }
+                
+                $liveSourceConfig = $Config['live_source_config'] ?? 'default';
+                $sourceJson = json_decode(@file_get_contents($sourceJsonPath), true) ?: [];
+                $templateJson = json_decode(@file_get_contents($templateJsonPath), true) ?: [];
+                $sourceContent = implode("\n", $sourceJson[$liveSourceConfig] ?? []);
+                $templateContent = implode("\n", $templateJson[$liveSourceConfig] ?? []);
+
+                // 生成配置下拉 HTML
+                $configOptionsHtml = '';
+                foreach ($sourceJson as $key => $_) {
+                    $selected = ($key == $liveSourceConfig) ? 'selected' : '';
+                    $label = htmlspecialchars($key);
+                    $configOptionsHtml .= "<option value=\"$label\" $selected>$label</option>\n";
+                }
+
+                // 读取频道数据，并合并测速信息
+                $stmt = $db->prepare("
+                    SELECT 
+                        c.*, 
+                        REPLACE(ci.resolution, 'x', '<br>x<br>') AS resolution,
+                        CASE 
+                            WHEN ci.speed GLOB '[0-9]*' THEN ci.speed || '<br>ms'
+                            ELSE ci.speed
+                        END AS speed
+                    FROM channels c
+                    LEFT JOIN channels_info ci ON c.streamUrl = ci.streamUrl
+                    WHERE c.config = ?
+                ");
+                $stmt->execute([$liveSourceConfig]);
+                $channelsData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                $dbResponse = [
+                    'source_content' => $sourceContent,
+                    'template_content' => $templateContent,
+                    'channels' => $channelsData,
+                    'config_options_html' => $configOptionsHtml,
+                ];
                 break;
 
             case 'parse_source_info':
@@ -397,8 +426,8 @@ try {
                 }
                 break;
 
-            case 'download_data':
-                // 下载数据
+            case 'download_source_data':
+                // 下载直播源数据
                 $url = filter_var(($_GET['url']), FILTER_VALIDATE_URL);
                 if ($url) {
                     $data = downloadData($url, '', 5);
@@ -426,33 +455,73 @@ try {
                 $dbResponse = ['success' => true, 'message' => "共清理了 $deletedCount 个台标"];
                 break;
 
-            case 'delete_unused_live_data':
-                // 清理未在使用的直播源缓存、未出现在频道列表中的修改记录
-                $sourceFilePath = $liveDir . 'source.txt';
-                $sourceContent = file_exists($sourceFilePath) ? file_get_contents($sourceFilePath) : '';
-                $urls = array_map('trim', explode("\n", $sourceContent));
-
-                // 遍历 live/file 目录，删除未使用的文件
-                $parentRltPath = '/' . basename(__DIR__) . '/data/live/file/'; // 相对路径
-                $deletedFileCount = 0;
-                foreach (scandir($liveFileDir) as $file) {
-                    if ($file === '.' || $file === '..') continue;
-                    $fileRltPath = $parentRltPath . $file;
-                    if (!array_filter($urls, function($url) use ($fileRltPath) {
-                        $url = trim(explode('#', ltrim($url, '# '))[0]); // 处理注释
-                        $urlmd5 = md5(urlencode($url)); // 计算 md5
-                        return $url && (stripos($fileRltPath, $url) !== false || stripos($fileRltPath, $urlmd5) !== false);
-                    })) {
-                        if (@unlink($liveFileDir . $file)) { // 如果没有匹配的 URL，删除文件
-                            $deletedFileCount++;
+            case 'delete_source_config':
+                // 删除直播源配置
+                $config = $_GET['live_source_config'];
+                $db->prepare("DELETE FROM channels WHERE config = ?")->execute([$config]);
+                foreach (['source', 'template'] as $file) {
+                    $filePath = $liveDir . "{$file}.json";
+                    if (file_exists($filePath)) {
+                        $json = json_decode(file_get_contents($filePath), true);
+                        if (isset($json[$config])) {
+                            unset($json[$config]);
+                            file_put_contents($filePath, json_encode($json, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
                         }
                     }
                 }
+                $id = md5(urlencode($config));
+                foreach (['m3u', 'txt'] as $ext) {
+                    @unlink("$liveFileDir{$id}.{$ext}");
+                }
+                exit;
 
-                // 删除 modifications.csv 文件
-                @unlink($liveDir . 'modifications.csv');
-                
-                $dbResponse = ['success' => true, 'message' => "共清理了 $deletedFileCount 个缓存文件。<br>已删除所有修改记录，请重新解析。"];
+            case 'delete_unused_live_data':
+                // 清理未在使用的直播源缓存、未出现在频道列表中的修改记录
+                $sourceFilePath = $liveDir . 'source.json';
+                $sourceJson = json_decode(@file_get_contents($sourceFilePath), true);
+                $urls = [];
+                foreach ((array)$sourceJson as $key => $list) {
+                    if (is_array($list)) {
+                        $urls = array_merge($urls, $list);
+                    }
+                    $urls[] = $key;
+                }
+            
+                // 处理直播源 URL，去掉注释并清理格式
+                $cleanUrls = array_map(function($url) {
+                    return trim(explode('#', ltrim($url, '# '))[0]);
+                }, $urls);
+            
+                // 删除未被使用的 /file 缓存文件
+                $parentRltPath = '/' . basename(__DIR__) . '/data/live/file/';
+                $deletedFileCount = 0;
+                foreach (scandir($liveFileDir) as $file) {
+                    if ($file === '.' || $file === '..') continue;
+            
+                    $fileRltPath = $parentRltPath . $file;
+                    $matched = false;
+                    foreach ($cleanUrls as $url) {
+                        if (!$url) continue;
+                        $urlMd5 = md5(urlencode($url));
+                        if (stripos($fileRltPath, $url) !== false || stripos($fileRltPath, $urlMd5) !== false) {
+                            $matched = true;
+                            break;
+                        }
+                    }
+                    if (!$matched && @unlink($liveFileDir . $file)) {
+                        $deletedFileCount++;
+                    }
+                }
+            
+                // 清除数据库中所有 channels.modified = 1 的记录（不分配置）
+                $stmt = $db->prepare("UPDATE channels SET modified = 0 WHERE modified = 1");
+                $stmt->execute();
+            
+                // 返回清理结果
+                $dbResponse = [
+                    'success' => true,
+                    'message' => "共清理了 $deletedFileCount 个缓存文件。<br>已清除所有修改标记，请重新解析。"
+                ];
                 break;
 
             case 'get_version_log':
@@ -502,15 +571,104 @@ try {
                 break;
 
             case 'get_access_log':
-                $accesslogFile = 'data/access.log';
-                $accesslogContent = file_exists($accesslogFile) ? file_get_contents($accesslogFile) : '';
-                $dbResponse = ['success' => true, 'content' => $accesslogContent];
+                $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+            
+                $stmt = $db->prepare("SELECT * FROM access_log WHERE id > ? ORDER BY id ASC");
+                $stmt->execute([$offset]);
+            
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                if (!$rows) {
+                    $dbResponse = ['success' => true, 'changed' => false, 'offset' => $offset];
+                    break;
+                }
+            
+                $content = '';
+                $lastId = $offset;
+                foreach ($rows as $row) {
+                    $content .= "[{$row['access_time']}] [{$row['client_ip']}] "
+                        . ($row['access_denied'] ? "{$row['deny_message']} " : '')
+                        . "[{$row['method']}] {$row['url']} | UA: {$row['user_agent']}\n";
+                    $lastId = max($lastId, $row['id']);
+                }
+            
+                $dbResponse = [ 'success' => true, 'changed' => true, 'content' => $content, 'offset' => $lastId ];
+                break;
+
+            case 'get_access_stats':
+                $stmt = $db->query("
+                    SELECT client_ip, DATE(access_time) AS date,
+                            COUNT(*) AS total, SUM(access_denied) AS deny
+                    FROM access_log
+                    GROUP BY client_ip, date
+                ");
+                $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            
+                $ipData = [];
+                $dates = [];
+            
+                foreach ($rows as $r) {
+                    $ip = $r['client_ip'];
+                    $date = $r['date'];
+                    $dates[$date] = true;
+            
+                    if (!isset($ipData[$ip])) {
+                        $ipData[$ip] = ['ip' => $ip, 'counts' => [], 'total' => 0, 'deny' => 0];
+                    }
+            
+                    $ipData[$ip]['counts'][$date] = (int)$r['total'];
+                    $ipData[$ip]['total'] += (int)$r['total'];
+                    $ipData[$ip]['deny'] += (int)$r['deny'];
+                }
+            
+                $dates = array_keys($dates);
+                sort($dates);
+            
+                foreach ($ipData as &$row) {
+                    $counts = [];
+                    foreach ($dates as $d) {
+                        $counts[] = isset($row['counts'][$d]) ? $row['counts'][$d] : 0;
+                    }
+                    $row['counts'] = $counts;
+                }
+            
+                $dbResponse = ['success' => true, 'ipData' => array_values($ipData), 'dates' => $dates];
                 break;
                 
             case 'clear_access_log':
-                $file = 'data/access.log';
-                $res = file_exists($file) && is_writable($file) && file_put_contents($file, '') !== false;
+                $res = $db->exec("DELETE FROM access_log") !== false;
                 $dbResponse = ['success' => $res];
+                break;
+
+            case 'get_ip_list':
+                $filename = basename($_GET['file'] ?? 'ipBlackList.txt'); // 只允许基本文件名
+                $file_path = __DIR__ . "/data/{$filename}";
+            
+                if (file_exists($file_path)) {
+                    $content = file($file_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                    $dbResponse = ['success' => true, 'list' => $content];
+                } else {
+                    $dbResponse = ['success' => true, 'list' => []];
+                }
+                break;
+
+            case 'test_redis':
+                $redisConfig = $Config['redis'] ?? [];
+                try {
+                    $redis = new Redis();
+                    $redis->connect($redisConfig['host'] ?: '127.0.0.1', $redisConfig['port'] ? (int)$redisConfig['port'] : 6379);
+                    if (!empty($redisConfig['password'])) {
+                        $redis->auth($redisConfig['password']);
+                    }
+                    if ($redis->ping()) {
+                        $Config['cached_type'] = 'redis';
+                        file_put_contents($configPath, json_encode($Config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                        $dbResponse = ['success' => true];
+                    } else {
+                        $dbResponse = ['success' => false];
+                    }
+                } catch (Exception $e) {
+                    $dbResponse = ['success' => false];
+                }
                 break;
 
             default:
@@ -539,6 +697,7 @@ try {
             'save_content_to_file' => isset($_POST['save_content_to_file']),
             'save_source_info' => isset($_POST['save_source_info']),
             'update_config_field' => isset($_POST['update_config_field']),
+            'create_source_config' => isset($_POST['create_source_config']),
         ];
 
         // 确定操作类型
@@ -665,27 +824,38 @@ try {
                     echo json_encode(['success' => true]);
                 }
 
-                // 清理 memcached 数据，避免缓存
-                if (class_exists('Memcached') && ($memcached = new Memcached())->addServer('localhost', 11211)) {
+                // 清理缓存数据
+                $cached_type = $Config['cached_type'] ?? 'memcached';
+                if ($cached_type === 'memcached' && class_exists('Memcached') && ($memcached = new Memcached())->addServer('127.0.0.1', 11211)) {
                     $memcached->flush();
+                } elseif ($cached_type === 'redis' && class_exists('Redis') && ($redis = new Redis()) && $redis->connect($Config['redis']['host'], $Config['redis']['port']) 
+                    && (empty($Config['redis']['password']) || $redis->auth($Config['redis']['password'])) && $redis->ping()) {
+                    $redis->flushAll();
                 }
                 exit;
 
             case 'upload_source_file':
                 // 上传直播源文件
                 $file = $_FILES['liveSourceFile'];
-                $fileName = $file['name'];
-                $uploadFile = $liveFileDir . $fileName;
+                $uploadFile = $liveFileDir . $file['name'];
+            
                 if (move_uploaded_file($file['tmp_name'], $uploadFile)) {
-                    $liveSourceUrl = '/data/live/file/' . basename($fileName);
-                    $sourceFilePath = $liveDir . 'source.txt';
-                    $currentContent = file_get_contents($sourceFilePath);
-                    if (!file_exists($sourceFilePath) || strpos($currentContent, $liveSourceUrl) === false) {
-                        // 如果文件不存在或文件中没有该 URL，将其追加到文件末尾
-                        $contentToAppend = trim($currentContent) ? PHP_EOL . $liveSourceUrl : $liveSourceUrl;
-                        file_put_contents($sourceFilePath, $contentToAppend, FILE_APPEND);
+                    $liveSourceUrl = '/data/live/file/' . basename($file['name']);
+                    $sourceFilePath = $liveDir . 'source.json';
+            
+                    $data = [];
+                    if (file_exists($sourceFilePath)) {
+                        $data = json_decode(file_get_contents($sourceFilePath), true) ?: [];
                     }
-                    echo json_encode(['success' => true]);
+                    
+                    $liveSourceConfig = $Config['live_source_config'] ?? 'default';
+                    if (!isset($data[$liveSourceConfig])) $data[$liveSourceConfig] = [];
+                    if (!in_array($liveSourceUrl, $data[$liveSourceConfig])) {
+                        $data[$liveSourceConfig][] = $liveSourceUrl;
+                    }
+            
+                    $ok = file_put_contents($sourceFilePath, json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+                    echo json_encode(['success' => $ok !== false]);
                 } else {
                     echo json_encode(['success' => false, 'message' => '文件上传失败']);
                 }
@@ -693,18 +863,30 @@ try {
 
             case 'save_content_to_file':
                 // 保存内容到文件
-                $filePath = __DIR__ . $_POST['file_path'] ?? '';
+                $filePath = __DIR__ . ($_POST['file_path'] ?? '');
                 $content = $_POST['content'] ?? '';
-                if (file_put_contents($filePath, str_replace("，", ",", $content)) !== false) {
-                    echo json_encode(['success' => true]);
+            
+                if (substr($filePath, -5) === '.json') {
+                    $newData = json_decode($content, true);
+                    if (!is_array($newData)) {
+                        http_response_code(400);
+                        echo json_encode(['success' => false, 'msg' => 'JSON格式错误']);
+                        exit;
+                    }
+                    $oldData = file_exists($filePath) ? json_decode(file_get_contents($filePath), true) : [];
+                    $oldData = is_array($oldData) ? $oldData : [];
+                    $merged = array_replace($oldData, $newData);
+                    $ok = file_put_contents($filePath, json_encode($merged, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
                 } else {
-                    http_response_code(500);
-                    echo json_encode(['success' => false]);
+                    $ok = file_put_contents($filePath, str_replace('，', ',', $content));
                 }
+            
+                echo json_encode(['success' => $ok !== false]);
                 exit;
                 
             case 'save_source_info':
                 // 更新配置文件
+                $Config['live_source_config'] = $_POST['live_source_config'];
                 $Config['live_tvg_logo_enable'] = (int)$_POST['live_tvg_logo_enable'];
                 $Config['live_tvg_id_enable'] = (int)$_POST['live_tvg_id_enable'];
                 $Config['live_tvg_name_enable'] = (int)$_POST['live_tvg_name_enable'];
@@ -717,13 +899,7 @@ try {
             
                 // 保存直播源信息
                 $content = json_decode($_POST['content'], true);
-                if (empty($content)) {
-                    echo json_encode(['success' => false, 'message' => '无效的数据']);
-                    exit;
-                }
-            
-                $fileName = $_POST['file_path'] ? 'file/' . md5(urlencode($_POST['file_path'])) : 'tv';
-                generateLiveFiles($content, $fileName, $saveOnly = true); // 重新生成 M3U 和 TXT 文件
+                generateLiveFiles($content, 'tv', $saveOnly = true); // 重新生成 M3U 和 TXT 文件
                 echo json_encode(['success' => true]);
                 exit;
 
@@ -742,6 +918,53 @@ try {
                     echo '保存失败';
                 }
                 exit;
+
+            case 'create_source_config':
+                // 新直播源配置
+                $new = $_POST['new_source_config'];
+                $old = $_POST['old_source_config'] ?? '';
+                $isNew = $_POST['is_new'] === 'true';
+                $paths = [
+                    'source' => $liveDir . 'source.json',
+                    'template' => $liveDir . 'template.json'
+                ];
+                foreach ($paths as $key => $path) {
+                    $data = is_file($path) ? json_decode(file_get_contents($path), true) : [];
+                    $data[$new] = $isNew ? [] : ($data[$old] ?? []);
+                    file_put_contents($path, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                }
+                if (!$isNew) {
+                    $stmt = $db->prepare("SELECT * FROM channels WHERE config = ?");
+                    $stmt->execute([$old]);
+                    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+                    if ($rows) {
+                        $db->beginTransaction();
+                        $insert = $db->prepare("INSERT INTO channels (
+                            groupTitle, channelName, chsChannelName, streamUrl,
+                            iconUrl, tvgId, tvgName, disable, modified,
+                            source, tag, config
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                        foreach ($rows as $r) {
+                            $r['config'] = $new;
+                            $insert->execute(array_values($r));
+                        }
+                        $db->commit();
+                    }
+
+                    $oldId = md5(urlencode($old));
+                    $newId = md5(urlencode($new));
+                    foreach (['m3u', 'txt'] as $ext) {
+                        $src = "{$liveFileDir}{$oldId}.{$ext}";
+                        $dst = "{$liveFileDir}{$newId}.{$ext}";
+                        if (is_file($src)) {
+                            copy($src, $dst);
+                        }
+                    }
+                }
+                $Config['live_source_config'] = $new;
+                file_put_contents($configPath, json_encode($Config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                exit;            
         }
     }
 } catch (Exception $e) {

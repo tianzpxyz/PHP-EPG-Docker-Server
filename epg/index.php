@@ -13,54 +13,118 @@
 // 引入公共脚本
 require_once 'public.php';
 
-// 获取当前完整的 URL
-$requestUrl = $_SERVER['REQUEST_URI'];
+// 解析参数，替换多余的 '?' 为 '&'，并特殊处理 5+ 频道
+$query = $_SERVER['QUERY_STRING'] ?? '';
+$query = str_replace(['?', '5+'], ['&', '5%2B'], $query);
+parse_str($query, $query_params);
 
-// 修正 URL 格式：如果存在多个 `?`，将后续的 `?` 替换为 `&`
-if (substr_count($requestUrl, '?') > 1) {
-    $requestUrl = preg_replace('/&/', '?', preg_replace('/\?/', '&', $requestUrl), 1);
+// 判断是否允许访问
+function isAllowed($value, array $allowedList, int $range, bool $isLive): bool
+{
+    foreach ($allowedList as $allowed) {
+        if (strpos($allowed, 'regex:') === 0) {
+            if (@preg_match(substr($allowed, 6), $value)) return true;
+        } elseif ($value === $allowed) {
+            return true;
+        }
+    }
+    return ($range === 2 && $isLive) || ($range === 1 && !$isLive);
 }
 
-// 解析 URL 中的查询参数，特殊处理 5+ 频道
-parse_str(str_replace('5+', '5%2B', parse_url($requestUrl, PHP_URL_QUERY)), $query_params);
-
-// 获取 URL 中的 token 参数并验证
+// 获取参数和配置
 $tokenRange = $Config['token_range'] ?? 1;
-$live = $query_params['live'] ?? '';
+$userAgentRange = $Config['user_agent_range'] ?? 0;
+$live = in_array($query_params['type'] ?? '', ['m3u', 'txt']);
+$accessDenied = false;
+
+// 验证token
 if ($tokenRange !== 0) {
-    $allowedTokens = array_map('trim', explode(',', $Config['token'] ?? ''));
+    $allowedTokens = array_map('trim', explode(PHP_EOL, $Config['token'] ?? ''));
     $token = $query_params['token'] ?? '';
-    if (!in_array($token, $allowedTokens) && (($tokenRange !== 2 && $live) || 
-        ($tokenRange !== 1 && !$live))) {
-        http_response_code(403);
-        echo '访问被拒绝：无效的 Token。';
-        exit;
+    if (!isAllowed($token, $allowedTokens, $tokenRange, (bool)$live)) {
+        $accessDenied = true;
+        $denyMessage = '访问被拒绝：无效Token。';
     }
 }
 
-// 获取请求的 User-Agent 并验证
-$userAgentRange = $Config['user_agent_range'] ?? 0;
-if ($userAgentRange !== 0) {
-    $allowedUserAgents = array_map('trim', explode(',', $Config['user_agent'] ?? ''));
+// 验证 User-Agent
+if (!$accessDenied && $userAgentRange !== 0) {
+    $allowedUserAgents = array_map('trim', explode(PHP_EOL, $Config['user_agent'] ?? ''));
     $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
-    if (!in_array($userAgent, $allowedUserAgents) && (($userAgentRange !== 2 && $live) || 
-       ($userAgentRange !== 1 && !$live))) {
-        http_response_code(403);
-        echo '访问被拒绝：无效的 User-Agent。';
-        exit;
+    if (!isAllowed($userAgent, $allowedUserAgents, $userAgentRange, (bool)$live)) {
+        $accessDenied = true;
+        $denyMessage = '访问被拒绝：无效UA。';
+    }
+}
+
+// 获取真实 IP 地址（防止反代影响）
+function getClientIp() {
+    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        return explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0];
+    } elseif (!empty($_SERVER['HTTP_CLIENT_IP'])) {
+        return $_SERVER['HTTP_CLIENT_IP'];
+    }
+    return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+}
+
+$clientIp = getClientIp();
+
+// 验证 IP 黑白名单
+if (!$accessDenied && !empty($Config['ip_list_mode'])) {
+    function ipInCidr($ip, $cidr) {
+        [$subnet, $mask] = explode('/', $cidr);
+        $ip = ip2long($ip);
+        $subnet = ip2long($subnet);
+        $mask = ~((1 << (32 - $mask)) - 1);
+        return ($ip & $mask) === ($subnet & $mask);
+    }
+    
+    $mode = (int)$Config['ip_list_mode'];
+    $file = __DIR__ . '/data/' . ($mode === 1 ? 'ipWhiteList.txt' : 'ipBlackList.txt');
+
+    if (file_exists($file)) {
+        $ipList = file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $hit = false;
+
+        foreach ($ipList as $rule) {
+            $rule = trim($rule);
+
+            if (strpos($rule, '/') !== false) {
+                if (ipInCidr($clientIp, $rule)) {
+                    $hit = true; break;
+                }
+            } elseif (fnmatch($rule, $clientIp)) {
+                $hit = true; break;
+            }
+        }
+
+        if (($mode === 1 && !$hit) || ($mode === 2 && $hit)) {
+            $accessDenied = true;
+            $denyMessage = "访问被拒绝：IP不允许。";
+        }
     }
 }
 
 // 记录访问日志
-if ($Config['debug_mode'] ?? 0) {
-    $logFile = __DIR__ . '/data/access.log';
-    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+if (!empty($Config['debug_mode'])) {
     $time = date('Y-m-d H:i:s');
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
     $url = rawurldecode($_SERVER['REQUEST_URI'] ?? 'unknown');
-    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-    $logEntry = "[$time] [$ip] [$method] $url | UA: $userAgent\n";
-    file_put_contents($logFile, $logEntry, FILE_APPEND);
+    $accessDeniedFlag = $accessDenied ? 1 : 0;
+    $denyMsg = $accessDenied ? $denyMessage : null;
+
+    $stmt = $db->prepare("INSERT INTO access_log 
+        (access_time, client_ip, method, url, user_agent, access_denied, deny_message) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)");
+
+    $stmt->execute([$time, $clientIp, $method, $url, $userAgent, $accessDeniedFlag, $denyMsg]);
+}
+
+// 拒绝访问并结束脚本
+if ($accessDenied) {
+    http_response_code(403);
+    exit($denyMessage);
 }
 
 // 禁止输出错误提示
@@ -101,21 +165,28 @@ function getFormatTime($time) {
     return ['date' => $date, 'time' => $time];
 }
 
-// 从数据库读取 diyp、lovetv 数据，兼容未安装 memcached 的情况
+// 从数据库读取 diyp、lovetv 数据，兼容未安装 Memcached/Redis 的情况
 function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
+    global $Config, $serverUrl;
+
     // 默认缓存 24 小时，更新数据时清空
     $cache_time = 24 * 3600;
 
     // 检查 Memcached 状态
-    $memcached_enabled = class_exists('Memcached') && ($memcached = new Memcached())->addServer('localhost', 11211);
+    $cached_type = $Config['cached_type'] ?? 'memcached';
+    $memcached_enabled = $cached_type === 'memcached' && class_exists('Memcached') && ($memcached = new Memcached())->addServer('127.0.0.1', 11211);
+    $redis_enabled = $cached_type === 'redis' && class_exists('Redis') && ($redis = new Redis()) && $redis->connect($Config['redis']['host'], $Config['redis']['port']) 
+        && (empty($Config['redis']['password']) || $redis->auth($Config['redis']['password'])) && $redis->ping();
     $cache_key = base64_encode("{$date}_{$cleanChannelName}_{$type}");
 
+    // 从缓存中读取数据
     if ($memcached_enabled) {
-        // 从缓存中读取数据
         $cached_data = $memcached->get($cache_key);
-        if ($cached_data) {
-            return $cached_data;
-        }
+    } elseif ($redis_enabled) {
+        $cached_data = $redis->get($cache_key);
+    }
+    if ($cached_data) {
+        return preg_replace('#"(/data/icon/.*)#', '"' . $serverUrl . '$1', $cached_data);
     }
 
     // 获取数据库类型（mysql 或 sqlite）
@@ -166,15 +237,6 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
         ['icon' => $iconUrl],
         array_slice($rowArray, array_search('url', array_keys($rowArray)) + 1)
     );
-    $row = json_encode($rowArray, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-
-    if ($type === 'diyp') {
-        // 如果 Memcached 可用，将结果存储到缓存中
-        if ($memcached_enabled) {
-            $memcached->set($cache_key, $row, $cache_time);
-        }
-        return $row;
-    }
 
     if ($type === 'lovetv') {
         $diyp_data = $rowArray;
@@ -198,7 +260,7 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
         $current_programme = $date === date('Y-m-d') ? findCurrentProgramme($program) : null;
 
         // 生成 lovetv 数据
-        $lovetv_data = [
+        $rowArray = [
             $oriChannelName => [
                 'isLive' => $current_programme ? $current_programme['t'] : '',
                 'liveSt' => $current_programme ? $current_programme['st'] : 0,
@@ -208,18 +270,17 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
                 'program' => $program
             ]
         ];
-
-        $response = json_encode($lovetv_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-
-        // 如果 Memcached 可用，将结果存储到缓存中
-        if ($memcached_enabled) {
-            $memcached->set($cache_key, $response, $cache_time);
-        }
-
-        return $response;
     }
 
-    return false;
+    $response = json_encode($rowArray, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    
+    if ($memcached_enabled) {
+        $memcached->set($cache_key, $response, $cache_time);
+    } elseif ($redis_enabled) {
+        $redis->setex($cache_key, $cache_time, $response);
+    }
+
+    return preg_replace('#"(/data/icon/.*)#', '"' . $serverUrl . '$1', $response);
 }
 
 // 查找当前节目
@@ -243,13 +304,13 @@ function liveFetchHandler($query_params) {
     $isValidFile = false;
     if (!empty($query_params['url'])) {
         $url = $query_params['url'];
-        $filePath = sprintf('%s/%s.%s', $liveFileDir, md5(urlencode($url)), $query_params['live']);
+        $filePath = sprintf('%s/%s.%s', $liveFileDir, md5(urlencode($url)), $query_params['type']);
         if (($query_params['latest'] === '1' && doParseSourceInfo($url)) === true || 
             file_exists($filePath) || doParseSourceInfo($url) === true) { // 判断是否需要获取最新文件
             $isValidFile = true;
         }
     } else {
-        $filePath = $liveDir . ($query_params['live'] === 'txt' ? 'tv.txt' : ($query_params['live'] === 'm3u' ? 'tv.m3u' : ''));
+        $filePath = $liveDir . ($query_params['type'] === 'txt' ? 'tv.txt' : ($query_params['type'] === 'm3u' ? 'tv.m3u' : ''));
         $isValidFile = file_exists($filePath);
     }
 
@@ -257,13 +318,13 @@ function liveFetchHandler($query_params) {
     if ($isValidFile) {
         $content = file_get_contents($filePath);
     } else {
-        echo "文件不存在或无效的 live 类型";
+        echo "文件不存在";
         exit;
     }
 
     // 处理 TVG URL 替换
-    $tvgUrl = $serverUrl . ($query_params['live'] === 'm3u' ? '/t.xml.gz' : '/');
-    if ($query_params['live'] === 'm3u') {
+    $tvgUrl = $serverUrl . ($query_params['type'] === 'm3u' ? '/t.xml.gz' : '/');
+    if ($query_params['type'] === 'm3u') {
         $content = preg_replace('/(#EXTM3U x-tvg-url=")(.*?)(")/', '$1' . $tvgUrl . '$3', $content, 1);
         $content = str_replace("tvg-logo=\"/data/icon/", "tvg-logo=\"$serverUrl/data/icon/", $content);
     }
@@ -274,29 +335,42 @@ function liveFetchHandler($query_params) {
 
 // 处理请求
 function fetchHandler($query_params) {
-    global $init, $db, $Config;
+    global $init, $db, $serverUrl, $Config;
 
     // 处理直播源请求
-    if (isset($query_params['live'])) {
+    if (in_array($query_params['type'] ?? '', ['m3u', 'txt'])) {
         liveFetchHandler($query_params);
     }
 
     // 获取并清理频道名称，繁体转换成简体
     $oriChannelName = $query_params['ch'] ?? $query_params['channel'] ?? '';
-    $cleanChannelName = cleanChannelName($oriChannelName, $t2s = true);
+    $cleanChannelName = cleanChannelName($oriChannelName, $t2s = ($Config['cht_to_chs'] ?? false));
+    $date = getFormatTime(preg_replace('/\D+/', '', $query_params['date'] ?? ''))['date'] ?? getNowDate();
 
-    $date = isset($query_params['date']) ? getFormatTime(preg_replace('/\D+/', '', $query_params['date']))['date'] : getNowDate();
-
-    // 频道参数为空时，直接返回 t.xml 文件数据
-    if (empty($cleanChannelName)) {
-        if ($Config['gen_xml'] === 1) {
-            header('Content-Type: application/xml');
-            header('Content-Disposition: attachment; filename="t.xml"');
-            readfile('./t.xml');
+    // 处理台标请求
+    if (($query_params['type'] ?? '') === 'icon') {
+        $iconUrl = iconUrlMatch($cleanChannelName) ?? iconUrlMatch($oriChannelName);
+        if ($iconUrl) {
+            header("Location: " . preg_replace('#(/data/icon/.*)#', $serverUrl . '$1', $iconUrl));
         } else {
-            // 输出消息并设置404状态码
-            echo "404 Not Found. <br>未生成 xmltv 文件";
             http_response_code(404);
+            echo "Icon not found.";
+        }
+        exit();
+    }
+
+    // 频道为空时，返回 xml.gz 文件
+    if ($cleanChannelName === '') {
+        if ($Config['gen_xml'] ?? 0) {
+            $type = $query_params['type'] ?? 'gz';
+            $file = $type === 'gz' ? 't.xml.gz' : 't.xml';
+            $contentType = $type === 'gz' ? 'application/gzip' : 'application/xml';
+            header("Content-Type: $contentType");
+            header("Content-Disposition: attachment; filename=\"$file\"");
+            readfile(__DIR__ . "/data/$file");
+        } else {
+            http_response_code(404);
+            echo "404 Not Found. <br>未生成 xmltv 文件";
         }
         exit;
     }
@@ -313,6 +387,7 @@ function fetchHandler($query_params) {
         // 无法获取到数据时返回默认数据
         $ret_default = $Config['ret_default'] ?? true;
         $iconUrl = iconUrlMatch($cleanChannelName) ?? iconUrlMatch($oriChannelName);
+        $iconUrl = preg_replace('#(/data/icon/.*)#', $serverUrl . '$1', $iconUrl);
         if ($type === 'diyp') {
             // 返回默认 diyp 数据
             $default_diyp_program_info = [

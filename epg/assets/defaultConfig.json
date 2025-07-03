@@ -6,12 +6,14 @@
     "channel_mappings": {
         "CCTV$1": "regex:\/^CCTV[-\\s]*(\\d{1,2}(\\s*P(LUS)?|[K\\+])?)(?![\\s-]*(美洲|欧洲)).*\/i"
     },
+    "channel_ignore_chars": "&nbsp, -",
     "channel_bind_epg": [],
     "gen_xml": 1,
     "include_future_only": 1,
     "ret_default": 0,
-    "cht_to_chs": 0,
+    "cht_to_chs": 1,
     "db_type": "sqlite",
+    "cached_type": "memcached",
     "gen_list_enable": 0,
     "interval_time": 21600,
     "mysql": {
@@ -20,9 +22,15 @@
         "username": "phpepg",
         "password": "phpepg"
     },
+    "redis": {
+        "host": "",
+        "port": "",
+        "password": ""
+    },
     "live_source_auto_sync": 0,
     "check_speed_auto_sync": 0,
     "check_speed_interval_factor": 1,
+    "live_source_config": "default",
     "live_channel_name_process": 0,
     "live_tvg_logo_enable": 1,
     "live_tvg_id_enable": 1,
@@ -41,6 +49,7 @@
     "user_agent": "",
     "user_agent_range": 0,
     "default_icon": "",
+    "ip_list_mode": 0,
     "check_update": 1,
     "debug_mode": 0,
     "manage_password": ""

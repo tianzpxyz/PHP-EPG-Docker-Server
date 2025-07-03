@@ -38,10 +38,9 @@ textarea {
 .table-container::-webkit-resizer, 
 textarea::-webkit-resizer {
     background: url('data:image/svg+xml;utf8,\
-    <svg fill="gray" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">\
-      <path d="m2,18l2,0l14,-14l0,-2l-16,16z" />\
-      <path d="m6,18l2,0l10,-10l0,-2l-12,12z" />\
-      <path d="m10,18l2,0l6,-6l0,-2l-8,8z" />\
+    <svg fill="gray" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">\
+      <polygon points="12,2 6,10 18,10" />\
+      <polygon points="12,22 6,14 18,14" />\
     </svg>') no-repeat center center;
 }
 
@@ -58,7 +57,7 @@ textarea[id="channel_mappings"] {
 }
 
 textarea[id="gen_list_text"] {
-    min-height: 149px;
+    min-height: 155px;
 }
 
 textarea[id="sourceUrlTextarea"] {
@@ -153,7 +152,8 @@ a:hover, .blue-span:hover {
 }
 
 .button-container a:hover, .button-container button:hover,
-.modal-content button:hover, input[type="submit"]:hover {
+.modal-content button:hover, input[type="submit"]:hover,
+#accessStatsTable th:hover {
     background-color: #0b7dda;
 }
 
@@ -193,6 +193,7 @@ input[type="tel"] {
 input[type="tel"] {
     padding: 0px;
     height: 32px;
+    font-size: 15px;
     margin-bottom: 0px;
 }
 
@@ -245,13 +246,15 @@ input[type="tel"] {
     padding-left: 25px;
 }
 
-.cron-log-modal-content {
+.cron-log-modal-content,
+.more-live-setting-modal-content {
     width: 450px;
 }
 
 .update-log-modal-content, 
 .live-source-modal-content,
-.access-log-modal-content {
+.access-log-modal-content,
+.access-stat-modal-content {
     width: 930px;
 }
 
@@ -297,7 +300,7 @@ input[type="tel"] {
 }
 
 .table-container[id="channel-match-table-container"] {
-    height: 460px;
+    height: 470px;
 }
 
 .table-container[id="live-source-table-container"] {
@@ -305,6 +308,10 @@ input[type="tel"] {
     min-height: 340px;
     margin-bottom: 0px;
     resize: vertical;
+}
+
+.table-container[id="access-stats-table-container"] {
+    height: 467px;
 }
 
 #logTable, #channelMatchTable, #channelTable, 
@@ -373,6 +380,40 @@ input[type="tel"] {
     width: 15%; /* 第四列宽度 */
 }
 
+#accessStatsTableWrapper {
+    overflow: auto;
+    max-width: 100%;
+}
+
+#accessStatsTable {
+    border-collapse: collapse;
+    width: max-content;
+    min-width: 100%;
+}
+
+#accessStatsTable th,
+#accessStatsTable td {
+    border: 1px solid #ccc;
+    padding: 6px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+#accessStatsTable th {
+    background-color: #2196F3;
+    color: white;
+    cursor: pointer;
+    user-select: none;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+#accessStatsTable td:first-child,
+#accessStatsTable th:first-child {
+    position: sticky;
+}
+
 .row {
     display: flex;
     flex-wrap: nowrap; /* 禁止换行 */
@@ -407,6 +448,17 @@ h2, span, label {
     white-space: nowrap; /* 禁止换行 */
     scrollbar-width: none; /* 隐藏滚动条 */
     resize: none;
+}
+
+.limited-row {
+    max-height: 6em;  /* 限制约4行 */
+    overflow: hidden;
+    white-space: pre-wrap;
+    word-break: break-all;
+    transition: max-height 0.3s ease;
+}
+.limited-row.expanded {
+    max-height: none !important;
 }
 
 /* 分页控件样式 */
@@ -568,13 +620,15 @@ body.dark .blue-span:hover {
 }
 
 body.dark .button-container a,
-body.dark .button-container button {
+body.dark .button-container button,
+body.dark #accessStatsTable th {
     background-color: #2d78b9;
     color: #e0e0e0;
 }
 
 body.dark .button-container a:hover,
-body.dark .button-container button:hover {
+body.dark .button-container button:hover,
+body.dark #accessStatsTable th:hover {
     background-color: #1565c0;
 }
 

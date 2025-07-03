@@ -100,7 +100,7 @@
             <button type="button" onclick="showModal('cron')">定时日志</button>
             <button type="button" onclick="showModal('update')">更新日志</button>
             <button type="button" id="accessLogBtn" onclick="showAccessLogModal()" 
-                style="display: <?php echo (isset($Config['debug_mode']) && $Config['debug_mode'] == 1) ? 'inline-block' : 'none'; ?>;">
+                style="display: <?php echo (@$Config['debug_mode'] == 1) ? 'inline-block' : 'none'; ?>;">
                 访问日志
             </button>
             <button type="button" onclick="showModal('moresetting')">更多设置</button>
@@ -155,12 +155,12 @@
 <div id="epgModal" class="modal">
     <div class="modal-content epg-modal-content">
         <span class="close">&times;</span>
-        <h2 id="epgTitle">频道名</h2>
+        <h2 id="epgTitle" style="user-select: text;">频道名</h2>
         <span id="epgSource" style="word-break: break-all;">来源</span>
         <br><br>
         <span id="epgDate">日期</span>
-        <span class="blue-span" id="prevDate" style="user-select: none; margin-left: 10px;">&#9664; 前一天</span>
-        <span class="blue-span" id="nextDate" style="user-select: none; margin-left: 10px;">后一天 &#9654;</span>
+        <span class="blue-span" id="prevDate" style="margin-left: 10px;">&#9664; 前一天</span>
+        <span class="blue-span" id="nextDate" style="margin-left: 10px;">后一天 &#9654;</span>
         <br><br>
         <textarea id="epgContent" readonly style="width: 100%; height: 380px;"></textarea>
     </div>
@@ -201,10 +201,37 @@
     <div class="modal-content access-log-modal-content">
         <span class="close">&times;</span>
         <h2>访问日志</h2>
-        <p id="accessLogContent" style="height: 402px; overflow: auto;"></p>
+        <p id="accessLogContent" style="height: 413px; overflow: auto; font-family: monospace; line-height: 1.5;"></p>
         <div class="button-container">
+            <button type="button" onclick="showAccessStats()">访问统计</button>
             <button type="button" onclick="clearAccessLog()">清空日志</button>
             <button type="button" onclick="downloadAccessLog()">下载日志</button>
+        </div>
+    </div>
+</div>
+
+<!-- 访问统计模态框 -->
+<div id="accessStatsModal" class="modal">
+    <div class="modal-content access-stat-modal-content">
+        <span class="close">&times;</span>
+        <h2>访问统计</h2>
+        <div class="table-container" id="access-stats-table-container">
+            <table id="accessStatsTable">
+                <thead></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- IP 列表模态框 -->
+<div id="ipModal" class="modal">
+    <div class="modal-content ip-modal-content">
+        <span class="close">&times;</span>
+        <h2>IP 列表</h2>
+        <textarea id="ipListTextarea" style="width:100%; height:415px;"></textarea>
+        <div style="text-align: right; margin-top: 10px;">
+            <button onclick="saveIpList()">保存</button>
         </div>
     </div>
 </div>
@@ -316,28 +343,60 @@
     </div>
 </div>
 
+<!-- MySQL 配置模态框 -->
+<div id="mysqlConfigModal" class="modal">
+    <div class="modal-content mysql-config-modal-content" style="width:275px">
+        <span class="close">&times;</span>
+        <h2>MySQL 配置</h2><br>
+        <div><label>地址：<input type="text" id="mysql_host" value="<?php echo $Config['mysql']['host'] ?? ''; ?>" style="width:200px"></label></div>
+        <div><label>库名：<input type="text" id="mysql_dbname" value="<?php echo $Config['mysql']['dbname'] ?? ''; ?>" style="width:200px"></label></div>
+        <div><label>用户：<input type="text" id="mysql_username" value="<?php echo $Config['mysql']['username'] ?? ''; ?>" style="width:200px"></label></div>
+        <div><label>密码：<input type="text" id="mysql_password" value="<?php echo $Config['mysql']['password'] ?? ''; ?>" style="width:200px"></label></div>
+        <br>
+        <div><button type="button" onclick="mysqlConfigModal.style.display='none';updateConfig()">保存配置</button></div>
+    </div>
+</div>
+
+<!-- Redis 配置模态框 -->
+<div id="redisConfigModal" class="modal">
+    <div class="modal-content redis-config-modal-content" style="width:275px">
+        <span class="close">&times;</span>
+        <h2>Redis 配置</h2><br>
+        <div><label>地址：<input type="text" id="redis_host" placeholder="127.0.0.1" value="<?php echo $Config['redis']['host'] ?? ''; ?>" style="width:200px"></label></div>
+        <div><label>端口：<input type="text" id="redis_port" placeholder="6379" value="<?php echo $Config['redis']['port'] ?? ''; ?>" style="width:200px"></label></div>
+        <div><label>密码：<input type="text" id="redis_password" value="<?php echo $Config['redis']['password'] ?? ''; ?>" style="width:200px"></label></div>
+        <br>
+        <div><button type="button" onclick="redisConfigModal.style.display='none';saveAndTestRedisConfig()">保存配置</button></div>
+    </div>
+</div>
+
 <!-- 直播源管理模态框 -->
 <div id="liveSourceManageModal" class="modal">
     <div class="modal-content live-source-modal-content">
         <span class="close">&times;</span>
-        
-        <!-- 输入框使用 textarea 用于输入直播源 URL -->
+
+        <!-- 直播源配置、地址 -->
         <div class="input-container">
-            <label for="sourceUrlTextarea">【直播源地址】</label><br>
-            <textarea id="sourceUrlTextarea"></textarea>
+            <label for="sourceUrlTextarea" style="display: inline-block;">【直播源地址】</label>
+            <label for="live_source_config">（配置：</label>
+            <select id="live_source_config" style="height: 26px; font-size: 14px;" onchange="onLiveSourceConfigChange()"></select>
+            <span class="blue-span" onclick="openLiveSourceConfigDialog(true)">新建</span>
+            <span class="blue-span" onclick="openLiveSourceConfigDialog(false)">另存</span>                   
+            <span class="blue-span" onclick="deleteSource()">删除</span>
+            <label for="live_source_config">）</label>
+            <br><textarea id="sourceUrlTextarea"></textarea>
         </div>
         <br>
         
         <!-- 中间按钮区 -->
-        <div class="button-container" style="width: 85%;">
+        <div class="button-container" style="width: 75%;">
             <input type="file" name="liveSourceFile" id="liveSourceFile" style="display: none;" accept=".m3u, .txt">
             <button id="uploadSourceBtn" onclick="document.getElementById('liveSourceFile').click()">上传源</button>
             <button id="parseSourceInfoBtn" onclick="parseSourceInfo()">解析源</button>
-            <button id="showLiveUrlBtn" onclick="showLiveUrl(`<?php echo strtok($Config['token'], ','); ?>`, `<?php echo $serverUrl; ?>`, `<?php echo $Config['token_range']; ?>`)">访问地址</button>
+            <button id="showLiveUrlBtn" onclick="showLiveUrl(`<?php echo strtok($Config['token'], PHP_EOL); ?>`, `<?php echo $serverUrl; ?>`, `<?php echo $Config['token_range']; ?>`)">访问地址</button>
             <button id="showLiveTemplateBtn" onclick="showLiveTemplate()">源模板</button>
             <button id="checkSourceBtn" onclick="showModal('chekspeed')">测速校验</button>
             <button id="saveSourceBtn" onclick="saveLiveSourceInfo()">保存</button>
-            <button id="saveSourceAsBtn" onclick="saveLiveSourceInfoAs()">另存为</button>
             <button id="showMoreLiveSettingBtn" onclick="showModal('morelivesetting')">更多设置</button>
         </div>
         <br>
@@ -358,17 +417,17 @@
                         <th style='width: 20%'>直播地址</th>
                         <th style='width: 15%'>台标地址<input type="checkbox" id="live_tvg_logo_enable" 
                             value="<?php echo isset($Config['live_tvg_logo_enable']) ? $Config['live_tvg_logo_enable'] : 1; ?>" 
-                            <?php echo (!isset($Config['live_tvg_logo_enable']) || $Config['live_tvg_logo_enable'] == 1) ? 'checked' : ''; ?>
+                            <?php echo (@$Config['live_tvg_logo_enable'] == 1) ? 'checked' : ''; ?>
                             onchange="this.value = this.checked ? 1 : 0;">
                         </th>
                         <th style='width: 9%'>tvg-id<input type="checkbox" id="live_tvg_id_enable" 
                             value="<?php echo isset($Config['live_tvg_id_enable']) ? $Config['live_tvg_id_enable'] : 1; ?>" 
-                            <?php echo (!isset($Config['live_tvg_id_enable']) || $Config['live_tvg_id_enable'] == 1) ? 'checked' : ''; ?>
+                            <?php echo (@$Config['live_tvg_id_enable'] == 1) ? 'checked' : ''; ?>
                             onchange="this.value = this.checked ? 1 : 0;">
                         </th>
                         <th style='width: 12%'>tvg-name<input type="checkbox" id="live_tvg_name_enable" 
                             value="<?php echo isset($Config['live_tvg_name_enable']) ? $Config['live_tvg_name_enable'] : 1; ?>" 
-                            <?php echo (!isset($Config['live_tvg_name_enable']) || $Config['live_tvg_name_enable'] == 1) ? 'checked' : ''; ?>
+                            <?php echo (@$Config['live_tvg_name_enable'] == 1) ? 'checked' : ''; ?>
                             onchange="this.value = this.checked ? 1 : 0;">
                         </th>
                         <th style='width: 45px'>分辨率</th>
@@ -417,24 +476,24 @@
             <div class="column">
                 <label for="live_template_enable">启用模板：</label>
                 <select id="live_template_enable" name="live_template_enable" required>
-                    <option value="1" <?php if (!isset($Config['live_template_enable']) || $Config['live_template_enable'] == 1) echo 'selected'; ?>>是</option>
-                    <option value="0" <?php if (isset($Config['live_template_enable']) && $Config['live_template_enable'] == 0) echo 'selected'; ?>>否</option>
+                    <option value="1" <?php if (@$Config['live_template_enable'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['live_template_enable'] == 0) echo 'selected'; ?>>否</option>
                 </select>
             </div>
             <div class="column">
                 <label for="live_fuzzy_match">模糊匹配：</label>
                 <select id="live_fuzzy_match" name="live_fuzzy_match" required>
-                    <option value="1" <?php if (!isset($Config['live_fuzzy_match']) || $Config['live_fuzzy_match'] == 1) echo 'selected'; ?>>是</option>
-                    <option value="0" <?php if (isset($Config['live_fuzzy_match']) && $Config['live_fuzzy_match'] == 0) echo 'selected'; ?>>否</option>
+                    <option value="1" <?php if (@$Config['live_fuzzy_match'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['live_fuzzy_match'] == 0) echo 'selected'; ?>>否</option>
                 </select>
             </div>
             <div class="column">
                 <label for="live_url_comment">线路备注：</label>
                 <select id="live_url_comment" name="live_url_comment" required>
-                    <option value="0" <?php if (!isset($Config['live_url_comment']) || $Config['live_url_comment'] == 0) echo 'selected'; ?>>关闭</option>
-                    <option value="1" <?php if (isset($Config['live_url_comment']) && $Config['live_url_comment'] == 1) echo 'selected'; ?>>TXT</option>
-                    <option value="2" <?php if (isset($Config['live_url_comment']) && $Config['live_url_comment'] == 2) echo 'selected'; ?>>M3U</option>
-                    <option value="3" <?php if (isset($Config['live_url_comment']) && $Config['live_url_comment'] == 3) echo 'selected'; ?>>全部</option>
+                    <option value="0" <?php if (@$Config['live_url_comment'] == 0) echo 'selected'; ?>>关闭</option>
+                    <option value="1" <?php if (@$Config['live_url_comment'] == 1) echo 'selected'; ?>>TXT</option>
+                    <option value="2" <?php if (@$Config['live_url_comment'] == 2) echo 'selected'; ?>>M3U</option>
+                    <option value="3" <?php if (@$Config['live_url_comment'] == 3) echo 'selected'; ?>>全部</option>
                 </select>
             </div>
             <div class="column">
@@ -466,7 +525,7 @@
                 </select>
             </div>
             <div class="column" style="display: flex; align-items: center;">
-                <label for="min_resolution">最低分辨率：</label>
+                <label>最低分辨率：</label>
                 <input type="tel" id="min_resolution_width" placeholder="宽度" style="text-align: center;" 
                     value="<?php echo $Config['min_resolution_width'] ?? 0; ?>">
                 <span>×</span>
@@ -509,7 +568,7 @@
         </div>
 
         <!-- 第三行 -->
-        <div class="row" style="margin-top: 25px; margin-bottom: 0px;">
+        <div class="row" style="margin-top: 25px;">
             <div class="column">
                 <button id="foregroundCheckBtn" onclick="showExecResult('check.php', () => showModal('live', popup = false))">前台测速</button>
             </div>
@@ -547,6 +606,10 @@
                     <option value="0" <?php if (@$Config['live_channel_name_process'] == 0) echo 'selected'; ?>>否</option>
                 </select>
             </div>
+        </div>
+
+        <!-- 第二行 -->
+        <div class="row" style="margin-top: 25px;">
             <div class="column">
                 <label for="gen_live_update_time">生成更新时间：</label>
                 <select id="gen_live_update_time" name="gen_live_update_time" required>
@@ -554,10 +617,6 @@
                     <option value="0" <?php if (@$Config['gen_live_update_time'] == 0) echo 'selected'; ?>>否</option>
                 </select>
             </div>
-        </div>
-
-        <!-- 第二行 -->
-        <div class="row" style="margin-top: 25px; margin-bottom: 0px;">
             <div class="column">
                 <label for="m3u_icon_first">优先读取 M3U 台标：</label>
                 <select id="m3u_icon_first" name="m3u_icon_first" required>
@@ -565,14 +624,10 @@
                     <option value="0" <?php if (@$Config['m3u_icon_first'] == 0) echo 'selected'; ?>>否</option>
                 </select>
             </div>
-            <div class="column">
-            </div>
-            <div class="column">
-            </div>
         </div>
 
         <!-- 第三行 -->
-        <div class="row" style="margin-top: 25px; margin-bottom: 0px;">
+        <div class="row" style="margin-top: 25px;">
             <div class="column">
                 <button id="cleanUnusedSourceBtn" onclick="cleanUnusedSource()">清理缓存数据</button>
             </div>
@@ -594,15 +649,15 @@
             <div class="column">
                 <label for="gen_xml">生成 xml 文件：</label>
                 <select id="gen_xml" name="gen_xml" required>
-                    <option value="1" <?php if ($Config['gen_xml'] == 1) echo 'selected'; ?>>是</option>
-                    <option value="0" <?php if ($Config['gen_xml'] == 0) echo 'selected'; ?>>否</option>
+                    <option value="1" <?php if (@$Config['gen_xml'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['gen_xml'] == 0) echo 'selected'; ?>>否</option>
                 </select>
             </div>
             <div class="column">
                 <label for="include_future_only">xml 内容：</label>
                 <select id="include_future_only" name="include_future_only" required>
-                    <option value="1" <?php if ($Config['include_future_only'] == 1) echo 'selected'; ?>>预告数据</option>
-                    <option value="0" <?php if ($Config['include_future_only'] == 0) echo 'selected'; ?>>所有数据</option>
+                    <option value="1" <?php if (@$Config['include_future_only'] == 1) echo 'selected'; ?>>预告数据</option>
+                    <option value="0" <?php if (@$Config['include_future_only'] == 0) echo 'selected'; ?>>所有数据</option>
                 </select>
             </div>
             <div class="column">
@@ -620,26 +675,26 @@
             <div class="column">
                 <label for="ret_default">返回精彩节目：</label>
                 <select id="ret_default" name="ret_default" required>
-                    <option value="1" <?php if (!isset($Config['ret_default']) || $Config['ret_default'] == 1) echo 'selected'; ?>>是</option>
-                    <option value="0" <?php if (isset($Config['ret_default']) && $Config['ret_default'] == 0) echo 'selected'; ?>>否</option>
+                    <option value="1" <?php if (@$Config['ret_default'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['ret_default'] == 0) echo 'selected'; ?>>否</option>
                 </select>
             </div>
             <div class="column">
                 <label for="token_range"><span class="blue-span" id="change_token_span" onclick="changeTokenUA('token', `<?php echo $Config['token']; ?>`)">Token</span> 范围：</label>
                 <select id="token_range" name="token_range" required onchange="showTokenRangeMessage(`<?php echo $Config['token']; ?>`, `<?php echo $serverUrl; ?>`)">
-                    <option value="0" <?php if (isset($Config['token_range']) && $Config['token_range'] == 0) echo 'selected'; ?>>无</option>
-                    <option value="1" <?php if (!isset($Config['token_range']) || $Config['token_range'] == 1) echo 'selected'; ?>>直播源</option>
-                    <option value="2" <?php if (isset($Config['token_range']) && $Config['token_range'] == 2) echo 'selected'; ?>>EPG</option>
-                    <option value="3" <?php if (isset($Config['token_range']) && $Config['token_range'] == 3) echo 'selected'; ?>>全部</option>
+                    <option value="0" <?php if (@$Config['token_range'] == 0) echo 'selected'; ?>>无</option>
+                    <option value="1" <?php if (($Config['token_range'] ?? 1) == 1) echo 'selected'; ?>>直播源</option>
+                    <option value="2" <?php if (@$Config['token_range'] == 2) echo 'selected'; ?>>EPG</option>
+                    <option value="3" <?php if (@$Config['token_range'] == 3) echo 'selected'; ?>>全部</option>
                 </select>
             </div>
             <div class="column">
                 <label for="user_agent_range"><span class="blue-span" id="change_ua_span" onclick="changeTokenUA('user_agent', `<?php echo $Config['user_agent']; ?>`)">User-Agent</span> 范围：</label>
                 <select id="user_agent_range" name="user_agent_range" required">
-                    <option value="0" <?php if (!isset($Config['user_agent_range']) || $Config['user_agent_range'] == 0) echo 'selected'; ?>>无</option>
-                    <option value="1" <?php if (isset($Config['user_agent_range']) && $Config['user_agent_range'] == 1) echo 'selected'; ?>>直播源</option>
-                    <option value="2" <?php if (isset($Config['user_agent_range']) && $Config['user_agent_range'] == 2) echo 'selected'; ?>>EPG</option>
-                    <option value="3" <?php if (isset($Config['user_agent_range']) && $Config['user_agent_range'] == 3) echo 'selected'; ?>>全部</option>
+                    <option value="0" <?php if (@$Config['user_agent_range'] == 0) echo 'selected'; ?>>无</option>
+                    <option value="1" <?php if (@$Config['user_agent_range'] == 1) echo 'selected'; ?>>直播源</option>
+                    <option value="2" <?php if (@$Config['user_agent_range'] == 2) echo 'selected'; ?>>EPG</option>
+                    <option value="3" <?php if (@$Config['user_agent_range'] == 3) echo 'selected'; ?>>全部</option>
                 </select>
             </div>
         </div>
@@ -648,69 +703,76 @@
         <div class="row">
             <div class="column">
                 <label for="cht_to_chs" title="">繁體转简体：</label>
-                <select id="cht_to_chs" name="cht_to_chs" required>
-                    <option value="0" <?php echo ($Config['cht_to_chs'] ?? 1) == 0 ? 'selected' : '' ?>>关闭</option>
-                    <option value="1" <?php echo ($Config['cht_to_chs'] ?? 1) == 1 ? 'selected' : '' ?>>仅频道名</option>
-                    <option value="2" <?php echo ($Config['cht_to_chs'] ?? 1) == 2 ? 'selected' : '' ?>>所有信息</option>
+                <select id="cht_to_chs" name="cht_to_chs" required onchange="chtToChsChanged(this)">
+                    <option value="0" <?php if (@$Config['cht_to_chs'] == 0) echo 'selected'; ?>>关闭</option>
+                    <option value="1" <?php if (($Config['cht_to_chs'] ?? 1) == 1) echo 'selected'; ?>>仅频道名</option>
+                    <option value="2" <?php if (@$Config['cht_to_chs'] == 2) echo 'selected'; ?>>所有信息</option>
                 </select>
             </div>
             <div class="column">
                 <label for="db_type">数据库：</label>
-                <select id="db_type" name="db_type" required>
-                    <option value="sqlite" <?php if (!isset($Config['db_type']) || $Config['db_type'] == 'sqlite') echo 'selected'; ?>>SQLite</option>
-                    <option value="mysql" <?php if (isset($Config['db_type']) && $Config['db_type'] == 'mysql') echo 'selected'; ?>>MySQL</option>
+                <select id="db_type" name="db_type" required onchange="changeDbType(this)">
+                    <option value="sqlite" <?php if (@$Config['db_type'] == 'sqlite') echo 'selected'; ?>>SQLite</option>
+                    <option value="mysql" <?php if (@$Config['db_type'] == 'mysql') echo 'selected'; ?>>MySQL</option>
                 </select>
             </div>
             <div class="column">
-                <label for="mysql_host">地址：</label>
-                <textarea id="mysql_host"><?php echo htmlspecialchars($Config['mysql']['host'] ?? ''); ?></textarea>
+                <label for="cached_type">数据缓存：</label>
+                <select id="cached_type" name="cached_type" required onchange="changeCachedType(this)">
+                    <option value="memcached" <?php if (@$Config['cached_type'] == 'memcached') echo 'selected'; ?>>Memcached</option>
+                    <option value="redis" <?php if (@$Config['cached_type'] == 'redis') echo 'selected'; ?>>Redis</option>
+                </select>
             </div>
         </div>
 
         <!-- 第四行 -->
         <div class="row">
             <div class="column">
-                <label for="mysql_dbname">库名：</label>
-                <textarea id="mysql_dbname"><?php echo htmlspecialchars($Config['mysql']['dbname'] ?? ''); ?></textarea>
+                <label for="ip_list_mode"><span class="blue-span" onclick="showIpModal()">IP 列表</span>：</label>
+                <select id="ip_list_mode" name="ip_list_mode" required onchange="showIpModal()">
+                    <option value="0" <?php if (@$Config['ip_list_mode'] == 0) echo 'selected'; ?>>不使用</option>
+                    <option value="1" <?php if (@$Config['ip_list_mode'] == 1) echo 'selected'; ?>>白名单模式</option>
+                    <option value="2" <?php if (@$Config['ip_list_mode'] == 2) echo 'selected'; ?>>黑名单模式</option>
+                </select>
             </div>
             <div class="column">
-                <label for="mysql_username">用户：</label>
-                <textarea id="mysql_username"><?php echo htmlspecialchars($Config['mysql']['username'] ?? ''); ?></textarea>
+                <label for="check_update">检查版本更新：</label>
+                <select id="check_update" name="check_update" required>
+                    <option value="1" <?php if (@$Config['check_update'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['check_update'] == 0) echo 'selected'; ?>>否</option>
+                </select>
             </div>
             <div class="column">
-                <label for="mysql_password">密码：</label>
-                <textarea id="mysql_password"><?php echo htmlspecialchars($Config['mysql']['password'] ?? ''); ?></textarea>
+                <label for="debug_mode">调试模式：</label>
+                <select id="debug_mode" name="debug_mode" required onchange="debugMode(this)">
+                    <option value="1" <?php if (@$Config['debug_mode'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (($Config['debug_mode'] ?? 0) == 0) echo 'selected'; ?>>否</option>
+                </select>
             </div>
         </div>
 
         <!-- 第五行 -->
         <div class="row">
             <div class="column">
-                <label for="check_update">检查版本更新：</label>
-                <select id="check_update" name="check_update" required>
-                    <option value="1" <?php if (!isset($Config['check_update']) || $Config['check_update'] == 1) echo 'selected'; ?>>是</option>
-                    <option value="0" <?php if (isset($Config['check_update']) && $Config['check_update'] == 0) echo 'selected'; ?>>否</option>
-                </select>
+                <a href="assets/tinyfilemanager/index.php?p=data&edit=customSource.php&env=ace" target="_blank" class="blue-span">
+                    编辑自定义数据源
+                </a>                  
             </div>
             <div class="column">
-                <label for="debug_mode">调试模式：</label>
-                <select id="debug_mode" name="debug_mode" required>
-                    <option value="1" <?php if (isset($Config['debug_mode']) && $Config['debug_mode'] == 1) echo 'selected'; ?>>是</option>
-                    <option value="0" <?php if (!isset($Config['debug_mode']) || $Config['debug_mode'] == 0) echo 'selected'; ?>>否</option>
-                </select>
             </div>
             <div class="column">
             </div>
         </div>
 
         <!-- 其他设置 -->
-        <label for="gen_list_text">仅生成以下频道数据：</label>
+        <span>匹配频道列表：</span>
+        <label for="gen_list_text">（仅生成以下数据</label>
         <select id="gen_list_enable" name="gen_list_enable" style="width: 60px; margin-right: 0px;" required>
-            <option value="1" <?php if (isset($Config['gen_list_enable']) && $Config['gen_list_enable'] == 1) echo 'selected'; ?>>是</option>
-            <option value="0" <?php if (!isset($Config['gen_list_enable']) || $Config['gen_list_enable'] == 0) echo 'selected'; ?>>否</option>
+            <option value="1" <?php if (@$Config['gen_list_enable'] == 1) echo 'selected'; ?>>是</option>
+            <option value="0" <?php if (($Config['gen_list_enable'] ?? 0) == 0) echo 'selected'; ?>>否</option>
         </select>
         <span>
-            （粘贴m3u、txt地址或内容，<span class="blue-span" onclick="parseSource()">解析</span> 后
+            ）（粘贴m3u、txt地址或内容，<span class="blue-span" onclick="parseSource()">解析</span> 后
             <span class="blue-span" onclick="showModal('channelmatch')">查看匹配</span>）
         </span>
         <br>
