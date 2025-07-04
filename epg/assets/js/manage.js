@@ -1211,7 +1211,8 @@ function cleanUnusedSource() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showMessageModal(data.message);
+            parseSourceInfo(data.message);
+            document.getElementById('moreLiveSettingModal').style.display = 'none';
         } else {
             showMessageModal('清理失败');
         }
@@ -1223,10 +1224,12 @@ function cleanUnusedSource() {
 
 // 显示直播源地址
 function showLiveUrl(token, serverUrl, tokenRange) {
-    const config = document.getElementById('live_source_config').value.trim();
+    const config = document.getElementById('live_source_config').value;
     const tokenStr = (tokenRange == 1 || tokenRange == 3) ? `token=${token}&` : '';
-    const m3uUrl = `${serverUrl}/tv.m3u?${tokenStr}url=${config}`;
-    const txtUrl = `${serverUrl}/tv.txt?${tokenStr}url=${config}`;
+    const urlParam = (config === 'default') ? '' : `url=${config}`;
+    const query = [tokenStr.slice(0, -1), urlParam].filter(Boolean).join('&');
+    const m3uUrl = `${serverUrl}/tv.m3u${query ? '?' + query : ''}`;
+    const txtUrl = `${serverUrl}/tv.txt${query ? '?' + query : ''}`;
     const message = 
         `M3U：<br><a href="${m3uUrl}" target="_blank">${m3uUrl}</a>&ensp;<a href="${m3uUrl}" download="tv.m3u">下载</a><br>` +
         `TXT：<br><a href="${txtUrl}" target="_blank">${txtUrl}</a>&ensp;<a href="${txtUrl}" download="tv.txt">下载</a><br>`;

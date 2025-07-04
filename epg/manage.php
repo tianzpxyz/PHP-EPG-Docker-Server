@@ -6,7 +6,7 @@
  * 管理界面脚本，用于处理会话管理、密码更改、登录验证、配置更新、更新日志展示等功能。
  *
  * 作者: Tak
- * GitHub: https://github.com/taksssss/EPG-Server
+ * GitHub: https://github.com/taksssss/iptv-tool
  */
 
 // 引入公共脚本，初始化数据库
@@ -378,9 +378,10 @@ try {
                     @unlink($templateTxtPath);
                 }
                 
-                $liveSourceConfig = $Config['live_source_config'] ?? 'default';
                 $sourceJson = json_decode(@file_get_contents($sourceJsonPath), true) ?: [];
                 $templateJson = json_decode(@file_get_contents($templateJsonPath), true) ?: [];
+                $liveSourceConfig = $Config['live_source_config'] ?? 'default';
+                $liveSourceConfig = isset($sourceJson[$liveSourceConfig]) ? $liveSourceConfig : 'default';
                 $sourceContent = implode("\n", $sourceJson[$liveSourceConfig] ?? []);
                 $templateContent = implode("\n", $templateJson[$liveSourceConfig] ?? []);
 
@@ -389,7 +390,8 @@ try {
                 foreach ($sourceJson as $key => $_) {
                     $selected = ($key == $liveSourceConfig) ? 'selected' : '';
                     $label = htmlspecialchars($key);
-                    $configOptionsHtml .= "<option value=\"$label\" $selected>$label</option>\n";
+                    $display = ($key === 'default') ? '默认' : $label;
+                    $configOptionsHtml .= "<option value=\"$label\" $selected>$display</option>\n";
                 }
 
                 // 读取频道数据，并合并测速信息
@@ -512,6 +514,8 @@ try {
                         $deletedFileCount++;
                     }
                 }
+                @unlink($liveDir . 'tv.m3u');
+                @unlink($liveDir . 'tv.txt');
             
                 // 清除数据库中所有 channels.modified = 1 的记录（不分配置）
                 $stmt = $db->prepare("UPDATE channels SET modified = 0 WHERE modified = 1");
@@ -520,7 +524,7 @@ try {
                 // 返回清理结果
                 $dbResponse = [
                     'success' => true,
-                    'message' => "共清理了 $deletedFileCount 个缓存文件。<br>已清除所有修改标记，请重新解析。"
+                    'message' => "共清理了 $deletedFileCount 个缓存文件。<br>已清除所有修改标记。<br>正在重新解析..."
                 ];
                 break;
 
