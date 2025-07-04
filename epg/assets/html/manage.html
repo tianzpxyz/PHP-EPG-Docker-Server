@@ -45,7 +45,7 @@
             <label for="days_to_keep" class="label-days-to-keep">数据保存天数</label>
             <label for="start_time" class="label-time custom-margin1">【定时任务】： 开始时间</label>
             <label for="end_time" class="label-time2 custom-margin2">结束时间</label>
-            <label for="interval_time" class="label-time3 custom-margin3">间隔周期（选0小时0分钟取消）</label>
+            <label for="interval_time" class="label-time3 custom-margin3">间隔周期</label>
         </div>
 
         <div class="form-row">
@@ -111,8 +111,8 @@
 
 <!-- 底部显示 -->
 <div class="footer" style="user-select: none;">
-    <a href="https://github.com/taksssss/EPG-Server" target="_blank" style="color: #888; text-decoration: none;">
-        https://github.com/taksssss/EPG-Server
+    <a href="https://github.com/taksssss/iptv-tool" target="_blank" style="color: #888; text-decoration: none;">
+        https://github.com/taksssss/iptv-tool
     </a>
     <a onclick="showVersionLog();" style="color: #888;">
         <span id="version">v2024.11.25</span>
@@ -120,7 +120,7 @@
     </a>
     <a onclick="showHelpModal();" style="color: #888;">使用说明</a>
     <a onclick="showDonationImage()" style="color: #888;">☕捐赠</a>
-    <a href="https://gitee.com/taksssss/EPG-Server/blob/main/DONATIONS.md" target="_blank" style="color: #888; text-decoration: none;">
+    <a href="https://gitee.com/taksssss/iptv-tool/blob/main/DONATIONS.md" target="_blank" style="color: #888; text-decoration: none;">
         🌹鸣谢列表
     </a>
 </div>
@@ -595,8 +595,9 @@
             <div class="column">
                 <label for="live_source_auto_sync">跟随 EPG 同步更新：</label>
                 <select id="live_source_auto_sync" name="live_source_auto_sync" required>
-                    <option value="1" <?php if (@$Config['live_source_auto_sync'] == 1) echo 'selected'; ?>>是</option>
-                    <option value="0" <?php if (@$Config['live_source_auto_sync'] == 0) echo 'selected'; ?>>否</option>
+                    <option value="0" <?php if (@$Config['live_source_auto_sync'] == 0) echo 'selected'; ?>>关闭</option>
+                    <option value="1" <?php if (@$Config['live_source_auto_sync'] == 1) echo 'selected'; ?>>当前配置</option>
+                    <option value="2" <?php if (@$Config['live_source_auto_sync'] == 2) echo 'selected'; ?>>所有配置</option>
                 </select>
             </div>
             <div class="column">
