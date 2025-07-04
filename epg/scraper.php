@@ -27,7 +27,7 @@
  * ]
  * 
  * 作者: Tak
- * GitHub: https://github.com/taksssss/EPG-Server
+ * GitHub: https://github.com/taksssss/iptv-tool
  */
 
 $sourceHandlers = [
