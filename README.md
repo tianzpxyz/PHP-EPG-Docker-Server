@@ -1,7 +1,18 @@
-![EPG-Server](https://socialify.git.ci/taksssss/EPG-Server/image?description=1&descriptionEditable=IPTV%E5%B7%A5%E5%85%B7%E7%AE%B1%EF%BC%8C%20Docker%F0%9F%90%B3%E9%83%A8%E7%BD%B2%EF%BC%8C%E6%94%AF%E6%8C%81EPG%E7%AE%A1%E7%90%86%E3%80%81%E7%9B%B4%E6%92%AD%E6%BA%90%E7%AE%A1%E7%90%86%E3%80%81%E5%8F%B0%E6%A0%87%E7%AE%A1%E7%90%86%E3%80%82&font=Inter&forks=1&issues=1&language=1&owner=1&pattern=Circuit%20Board&pulls=1&stargazers=1&theme=Auto)
-
 # 📺 IPTV工具箱
-![Docker Pulls](https://img.shields.io/docker/pulls/taksss/php-epg) ![Image Size](https://img.shields.io/docker/image-size/taksss/php-epg/latest)
+<div align="center">
+
+<a href="https://trendshift.io/repositories/12969" target="_blank">
+  <img src="https://trendshift.io/api/badge/repositories/12969" alt="IPTV Tool | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
+</a>
+
+[![GitHub Stars](https://img.shields.io/github/stars/taksssss/iptv-tool?style=social)](https://github.com/taksssss/iptv-tool/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/taksssss/iptv-tool?style=social)](https://github.com/taksssss/iptv-tool/network/members)
+[![GitHub Issues](https://img.shields.io/github/issues/taksssss/iptv-tool)](https://github.com/taksssss/iptv-tool/issues)
+[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/taksssss/iptv-tool)](https://github.com/taksssss/iptv-tool/pulls)
+[![License](https://img.shields.io/github/license/taksssss/iptv-tool)](https://github.com/taksssss/iptv-tool/blob/main/LICENSE)
+![Docker Pulls](https://img.shields.io/docker/pulls/taksss/php-epg)
+![Image Size](https://img.shields.io/docker/image-size/taksss/php-epg/latest)
+</div>
 
 IPTV 工具箱， `Docker` 部署，支持 **EPG 管理**、**直播源管理**、**台标管理**，兼容 **DIYP/百川**、 **超级直播**以及 **xmltv** 格式。
 
