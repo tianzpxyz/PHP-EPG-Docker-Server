@@ -7,7 +7,7 @@
  * 并从 SQLite 数据库中提取或返回默认数据。
  *
  * 作者: Tak
- * GitHub: https://github.com/taksssss/EPG-Server
+ * GitHub: https://github.com/taksssss/iptv-tool
  */
 
 // 引入公共脚本
@@ -231,7 +231,7 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
     // 在解码和添加 icon 后再编码为 JSON
     $rowArray = json_decode($row, true);
     unset($rowArray['source']); // 移除 source 字段
-    $iconUrl = iconUrlMatch($cleanChannelName) ?? iconUrlMatch($oriChannelName);
+    $iconUrl = iconUrlMatch([$cleanChannelName, $oriChannelName]);
     $rowArray = array_merge(
         array_slice($rowArray, 0, array_search('url', array_keys($rowArray)) + 1),
         ['icon' => $iconUrl],
@@ -302,16 +302,11 @@ function liveFetchHandler($query_params) {
 
     // 计算文件路径
     $isValidFile = false;
-    if (!empty($query_params['url'])) {
-        $url = $query_params['url'];
-        $filePath = sprintf('%s/%s.%s', $liveFileDir, md5(urlencode($url)), $query_params['type']);
-        if (($query_params['latest'] === '1' && doParseSourceInfo($url)) === true || 
-            file_exists($filePath) || doParseSourceInfo($url) === true) { // 判断是否需要获取最新文件
-            $isValidFile = true;
-        }
-    } else {
-        $filePath = $liveDir . ($query_params['type'] === 'txt' ? 'tv.txt' : ($query_params['type'] === 'm3u' ? 'tv.m3u' : ''));
-        $isValidFile = file_exists($filePath);
+    $url = $query_params['url'] ?: 'default';
+    $filePath = sprintf('%s/%s.%s', $liveFileDir, md5(urlencode($url)), $query_params['type']);
+    if (($query_params['latest'] === '1' && doParseSourceInfo($url)) === true || 
+        file_exists($filePath) || doParseSourceInfo($url) === true) { // 判断是否需要获取最新文件
+        $isValidFile = true;
     }
 
     // 如果文件存在或成功解析了源数据
@@ -349,7 +344,7 @@ function fetchHandler($query_params) {
 
     // 处理台标请求
     if (($query_params['type'] ?? '') === 'icon') {
-        $iconUrl = iconUrlMatch($cleanChannelName) ?? iconUrlMatch($oriChannelName);
+        $iconUrl = iconUrlMatch([$cleanChannelName, $oriChannelName]);
         if ($iconUrl) {
             header("Location: " . preg_replace('#(/data/icon/.*)#', $serverUrl . '$1', $iconUrl));
         } else {
@@ -386,14 +381,14 @@ function fetchHandler($query_params) {
 
         // 无法获取到数据时返回默认数据
         $ret_default = $Config['ret_default'] ?? true;
-        $iconUrl = iconUrlMatch($cleanChannelName) ?? iconUrlMatch($oriChannelName);
+        $iconUrl = iconUrlMatch([$cleanChannelName, $oriChannelName]);
         $iconUrl = preg_replace('#(/data/icon/.*)#', $serverUrl . '$1', $iconUrl);
         if ($type === 'diyp') {
             // 返回默认 diyp 数据
             $default_diyp_program_info = [
                 'channel_name' => $cleanChannelName,
                 'date' => $date,
-                'url' => "https://github.com/taksssss/EPG-Server",
+                'url' => "https://github.com/taksssss/iptv-tool",
                 'icon' => $iconUrl,
                 'epg_data' => !$ret_default ? '' : array_map(function($hour) {
                     return [
@@ -412,7 +407,7 @@ function fetchHandler($query_params) {
                     'isLive' => '',
                     'liveSt' => 0,
                     'channelName' => $cleanChannelName,
-                    'lvUrl' => 'https://github.com/taksssss/EPG-Server',
+                    'lvUrl' => 'https://github.com/taksssss/iptv-tool',
                     'icon' => $iconUrl,
                     'program' => !$ret_default ? '' : array_map(function($hour) {
                         return [

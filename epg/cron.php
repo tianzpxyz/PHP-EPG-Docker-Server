@@ -6,7 +6,7 @@
  * 该脚本用于在特定时间间隔内执行 update.php，以实现定时任务功能。
  *
  * 作者: Tak
- * GitHub: https://github.com/taksssss/EPG-Server
+ * GitHub: https://github.com/taksssss/iptv-tool
  */
 
 // 引入公共脚本，初始化数据库

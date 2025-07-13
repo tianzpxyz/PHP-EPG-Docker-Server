@@ -182,9 +182,9 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
         if (($Config['cht_to_chs'] ?? 1) === 2) { $xml_data = t2s($xml_data); }
         $db->beginTransaction();
         try {
-            $processCount = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $timeZone);
+            [$processCount, $skipCount] = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $timeZone);
             $db->commit();
-            logMessage($log_messages, "【更新】 成功：共 {$processCount} 条");
+            logMessage($log_messages, "【更新】 成功：入库 {$processCount} 条，跳过 {$skipCount} 条");
         } catch (Exception $e) {
             $db->rollBack();
             logMessage($log_messages, "【处理数据出错！！！】 " . $e->getMessage());
@@ -200,7 +200,8 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
     global $Config, $processedRecords, $channel_bind_epg, $thresholdDate;
 
     // 统计处理数据量
-    $processCount = 0;
+    $programmeCount = 0;
+    $skipCount = 0;
 
     $reader = new XMLReader();
     if (!$reader->XML($xml_data)) {
@@ -259,12 +260,14 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
     $overwrite_time_zone = $timeZone ?: (strpos($xml_data, 'epg.pw') !== false ? '+0800' : '');
 
     while ($reader->name === 'programme') {
+        $programmeCount++;
         $programme = new SimpleXMLElement($reader->readOuterXML());
         [$startDate, $startTime] = getFormatTime((string)$programme['start'], $overwrite_time_zone);
         [$endDate, $endTime] = getFormatTime((string)$programme['stop'], $overwrite_time_zone);
 
         // 判断数据是否符合设定期限
         if (empty($startDate) || $startDate < $thresholdDate || empty($endDate)) {
+            $skipCount++;
             $reader->next('programme');
             continue;
         }
@@ -275,11 +278,7 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
 
         // 优先处理跨天数据
         if (isset($crossDayProgrammes[$channelId][$startDate]) && !isset($processedRecords[$recordKey])) {
-            $currentChannelProgrammes[$channelId]['diyp_data'][$startDate] = array_merge(
-                $currentChannelProgrammes[$channelId]['diyp_data'][$startDate] ?? [],
-                $crossDayProgrammes[$channelId][$startDate]
-            );
-            $currentChannelProgrammes[$channelId]['channel_name'] = $channelName;
+            $currentChannelProgrammes[$channelId]['diyp_data'][$startDate] = $crossDayProgrammes[$channelId][$startDate];
             unset($crossDayProgrammes[$channelId][$startDate]);
         }
     
@@ -308,11 +307,11 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
             // 每次达到 50 时，插入数据并保留最后一条
             if (count($currentChannelProgrammes) >= 50) {
                 $lastProgramme = array_pop($currentChannelProgrammes); // 取出最后一条
-                insertDataToDatabase($currentChannelProgrammes, $db, $xml_url); // 插入前 49 条
+                $skipCount += insertDataToDatabase($currentChannelProgrammes, $db, $xml_url); // 插入前 49 条
                 $currentChannelProgrammes = [$channelId => $lastProgramme]; // 清空并重新赋值最后一条
             }
-            
-            $processCount++;
+        } else{
+            $skipCount++;
         }
     
         $reader->next('programme');
@@ -320,12 +319,13 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
     
     // 插入剩余的数据
     if ($currentChannelProgrammes) {
-        insertDataToDatabase($currentChannelProgrammes, $db, $xml_url);
+        $skipCount += insertDataToDatabase($currentChannelProgrammes, $db, $xml_url);
     }
     
     $reader->close();
-    
-    return $processCount;
+
+    $processCount = $programmeCount - $skipCount;
+    return [$processCount, $skipCount];
 }
 
 // 从 epg_data 读取数据，生成 iconList.json 及 xmltv 文件
@@ -498,8 +498,8 @@ $getCount = function() use ($db) {
     return $count;
 };
 
+// 统计更新前数据条数
 $initialCount = $getCount();
-
 
 // 删除过期数据
 $thresholdDate = date('Y-m-d', strtotime("-{$Config['days_to_keep']} days +1 day"));
@@ -569,12 +569,13 @@ foreach ($Config['xml_urls'] as $xml_url) {
 processIconListAndXmltv($db, $gen_list_mapping, $log_messages);
 
 // 判断是否同步更新直播源
-if ($Config['live_source_auto_sync'] ?? false) {
-    $parseResult = doParseSourceInfo();
-    if ($parseResult !== true) {
-        logMessage($log_messages, "【直播文件】 部分更新异常：" . rtrim(str_replace('<br>', '、', $parseResult), '、'));
+if ($syncMode = $Config['live_source_auto_sync'] ?? false) {
+    $parseResult = $syncMode == 2 ? doParseSourceInfo(null, true) : doParseSourceInfo();
+    $tip = $syncMode == 2 ? '（所有配置）' : '（当前配置）';
+    if ($parseResult === true) {
+        logMessage($log_messages, "【直播文件】 已同步更新{$tip}");
     } else {
-        logMessage($log_messages, "【直播文件】 已同步更新");
+        logMessage($log_messages, "【直播文件】 部分更新异常{$tip}：" . rtrim(str_replace('<br>', '、', $parseResult), '、'));
     }
 }
 
