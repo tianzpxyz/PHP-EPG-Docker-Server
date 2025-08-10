@@ -228,15 +228,15 @@ docker run -d --name php-epg-update -v /var/run/docker.sock:/var/run/docker.sock
 <picture>
   <source
     media="(prefers-color-scheme: dark)"
-    srcset="https://api.star-history.com/svg?repos=taksssss/EPG-Server&type=Date&theme=dark"
+    srcset="https://api.star-history.com/svg?repos=taksssss/iptv-tool&type=Date&theme=dark"
   />
   <source
     media="(prefers-color-scheme: light)"
-    srcset="https://api.star-history.com/svg?repos=taksssss/EPG-Server&type=Date"
+    srcset="https://api.star-history.com/svg?repos=taksssss/iptv-tool&type=Date"
   />
   <img
     alt="Star History Chart"
-    src="https://api.star-history.com/svg?repos=taksssss/EPG-Server&type=Date"
+    src="https://api.star-history.com/svg?repos=taksssss/iptv-tool&type=Date"
   />
 </picture>
 
