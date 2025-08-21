@@ -6,7 +6,7 @@
  * 该脚本用于定期从配置的 XML 源下载节目数据，并将其存入 SQLite 数据库中。
  * 
  * 作者: Tak
- * GitHub: https://github.com/taksssss/EPG-Server
+ * GitHub: https://github.com/taksssss/iptv-tool
  */
 
 // 禁用 PHP 输出缓冲
@@ -33,6 +33,9 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
     http_response_code(403); // 返回403禁止访问
     exit('禁止直接访问，请修改update.php');
 }
+
+// 获取目标时区
+$target_time_zone = $Config['target_time_zone'] ?? 0;
 
 // 删除过期数据和日志
 function deleteOldData($db, $thresholdDate, &$log_messages) {
@@ -86,20 +89,42 @@ function deleteOldData($db, $thresholdDate, &$log_messages) {
     echo "<br>";
 }
 
-// 格式化时间函数，同时转化为 UTC+8 时间
-function getFormatTime($time, $overwrite_time_zone) {
-    if (empty($time)) return ['', ''];
-    $time = $overwrite_time_zone ? substr($time, 0, -5) . $overwrite_time_zone : $time;
-    $time = str_replace(' ', '', $time);
-    $datetime = DateTime::createFromFormat('YmdHisO', $time);
-    if (!$datetime) return [null, null];
-    $datetime->setTimezone(new DateTimeZone('+0800'));
-    return [$datetime->format('Y-m-d'), $datetime->format('H:i')];
+// 根据时间字符串和时区偏移，计算目标时区及额外偏移后的格式化日期和时间
+function getFormatTime($time, $time_offset) {
+    global $Config, $target_time_zone;
+
+    preg_match('/^(\d{14})\s*([+-]\d{4})$/', $time, $m);
+    $base_time = $m[1];
+    $source_offset = $m[2];
+
+    // 用 UTC 时区解析基础时间，避免系统时区干扰
+    $dt = DateTime::createFromFormat('YmdHis', $base_time, new DateTimeZone('UTC'));
+    $timestamp = $dt ? $dt->getTimestamp() : 0;
+
+    $time_offset_sec = empty($time_offset) ? 0 : offsetToSeconds($time_offset);
+
+    if (empty($target_time_zone)) {
+        $total_offset = $time_offset_sec;
+    } else {
+        $total_offset = offsetToSeconds($target_time_zone) - offsetToSeconds($source_offset) + $time_offset_sec;
+    }
+
+    $final_time = gmdate('Y-m-d H:i', $timestamp + $total_offset);
+    return explode(' ', $final_time);
+}
+
+function offsetToSeconds($offset) {
+    $sign = ($offset[0] === '-') ? -1 : 1;
+    $hours = intval(substr($offset, 1, 2));
+    $minutes = intval(substr($offset, 3, 2));
+    return $sign * ($hours * 3600 + $minutes * 60);
 }
 
 // 辅助函数：将日期和时间格式化为 XMLTV 格式
 function formatTime($date, $time) {
-    return date('YmdHis O', strtotime("$date $time"));
+    global $target_time_zone;
+    $tz = empty($target_time_zone) ? '+0800' : $target_time_zone; // 关闭时区转换时，设为 +0800
+    return date("YmdHis $tz", strtotime("$date $time"));
 }
 
 // 获取限定频道列表及映射关系
@@ -158,7 +183,7 @@ function getChannelBindEPG() {
 }
 
 // 下载 XML 数据并存入数据库
-function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $white_list, $black_list, $timeZone) {
+function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $white_list, $black_list, $time_offset) {
     global $Config;
     [$xml_data, $error, $mtime] = downloadData($xml_url, $userAgent);
     if ($xml_data !== false) {
@@ -182,7 +207,7 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
         if (($Config['cht_to_chs'] ?? 1) === 2) { $xml_data = t2s($xml_data); }
         $db->beginTransaction();
         try {
-            [$processCount, $skipCount] = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $timeZone);
+            [$processCount, $skipCount] = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $time_offset);
             $db->commit();
             logMessage($log_messages, "【更新】 成功：入库 {$processCount} 条，跳过 {$skipCount} 条");
         } catch (Exception $e) {
@@ -196,7 +221,7 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
 }
 
 // 处理 XML 数据并逐步存入数据库
-function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $timeZone) {
+function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $time_offset) {
     global $Config, $processedRecords, $channel_bind_epg, $thresholdDate;
 
     // 统计处理数据量
@@ -256,14 +281,11 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
     $currentChannelProgrammes = [];
     $crossDayProgrammes = []; // 保存跨天的节目数据
     
-    // 修正时区错误
-    $overwrite_time_zone = $timeZone ?: (strpos($xml_data, 'epg.pw') !== false ? '+0800' : '');
-
     while ($reader->name === 'programme') {
         $programmeCount++;
         $programme = new SimpleXMLElement($reader->readOuterXML());
-        [$startDate, $startTime] = getFormatTime((string)$programme['start'], $overwrite_time_zone);
-        [$endDate, $endTime] = getFormatTime((string)$programme['stop'], $overwrite_time_zone);
+        [$startDate, $startTime] = getFormatTime((string)$programme['start'], $time_offset);
+        [$endDate, $endTime] = getFormatTime((string)$programme['stop'], $time_offset);
 
         // 判断数据是否符合设定期限
         if (empty($startDate) || $startDate < $thresholdDate || empty($endDate)) {
@@ -376,7 +398,7 @@ function processIconListAndXmltv($db, $gen_list_mapping, &$log_messages) {
     $xmlWriter->startDocument('1.0', 'UTF-8');
     $xmlWriter->startElement('tv');
     $xmlWriter->writeAttribute('generator-info-name', 'Tak');
-    $xmlWriter->writeAttribute('generator-info-url', 'https://github.com/taksssss/EPG-Server');
+    $xmlWriter->writeAttribute('generator-info-url', 'https://github.com/taksssss/iptv-tool');
     $xmlWriter->setIndent(true);
     $xmlWriter->setIndentString('	'); // 设置缩进
 
@@ -516,6 +538,13 @@ $channel_bind_epg = getChannelBindEPG();
 // 全局变量，用于记录已处理的记录
 $processedRecords = [];
 
+if (!empty($target_time_zone)) {
+    logMessage($log_messages, "【时区转换】 目标：UTC" . substr_replace($target_time_zone, ':', -2, 0));
+} else {
+    logMessage($log_messages, "【时区转换】 关闭");
+}
+echo "<br>";
+
 // 更新数据
 foreach ($Config['xml_urls'] as $xml_url) {
     // 去掉空白字符，忽略空行和以 # 开头的 URL
@@ -537,10 +566,10 @@ foreach ($Config['xml_urls'] as $xml_url) {
     $cleaned_url = trim($xml_parts[0]);
     $userAgent = '';
     $white_list = $black_list = [];
-    $timeZone = '';
+    $time_offset = '';
     
     logMessage($log_messages, "【地址】 $cleaned_url");
-    
+
     foreach ($xml_parts as $part) {
         $part = trim($part);
         if (stripos($part, 'UA=') === 0 || stripos($part, 'useragent=') === 0) {
@@ -556,13 +585,13 @@ foreach ($Config['xml_urls'] as $xml_url) {
                 $white_list = $list;
                 logMessage($log_messages, "【临时】 限定频道：" . implode(", ", $white_list));
             }
-        } elseif (stripos($part, 'TZ=') === 0 || stripos($part, 'timezone=') === 0) {
-            $timeZone = substr($part, strpos($part, '=') + 1);
-            logMessage($log_messages, "【修正】 时区：$timeZone");
+        } elseif (stripos($part, 'TO=') === 0 || stripos($part, 'timeoffset=') === 0) {
+            $time_offset = substr($part, strpos($part, '=') + 1);
+            logMessage($log_messages, "【修正】 时间偏移：$time_offset");
         }
     }
-        
-    downloadXmlData($cleaned_url, $userAgent, $db, $log_messages, $gen_list, $white_list, $black_list, $timeZone);
+    
+    downloadXmlData($cleaned_url, $userAgent, $db, $log_messages, $gen_list, $white_list, $black_list, $time_offset);
 }
 
 // 更新 iconList.json 及生成 xmltv 文件
