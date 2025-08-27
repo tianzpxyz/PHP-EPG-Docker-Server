@@ -393,7 +393,7 @@
             <input type="file" name="liveSourceFile" id="liveSourceFile" style="display: none;" accept=".m3u, .txt">
             <button id="uploadSourceBtn" onclick="document.getElementById('liveSourceFile').click()">上传源</button>
             <button id="parseSourceInfoBtn" onclick="parseSourceInfo()">解析源</button>
-            <button id="showLiveUrlBtn" onclick="showLiveUrl(`<?= strtok($Config['token'], PHP_EOL) ?>`, `<?= $serverUrl ?>`, `<?= $Config['token_range'] ?>`, `<?= $modRewrite ?>`)">访问地址</button>
+            <button id="showLiveUrlBtn" onclick="showLiveUrl()">访问地址</button>
             <button id="showLiveTemplateBtn" onclick="showLiveTemplate()">源模板</button>
             <button id="checkSourceBtn" onclick="showModal('chekspeed')">测速校验</button>
             <button id="saveSourceBtn" onclick="saveLiveSourceInfo()">保存</button>
@@ -549,7 +549,7 @@
                 </select>
             </div>
             <div class="column">
-                <label for="check_speed_auto_sync">跟随 EPG 同步测速：</label>
+                <label for="check_speed_auto_sync">跟随 EPG 测速：</label>
                 <select id="check_speed_auto_sync" name="check_speed_auto_sync" required>
                     <option value="1" <?php if (@$Config['check_speed_auto_sync'] == 1) echo 'selected'; ?>>是</option>
                     <option value="0" <?php if (@$Config['check_speed_auto_sync'] == 0) echo 'selected'; ?>>否</option>
@@ -593,7 +593,7 @@
         <!-- 第一行 -->
         <div class="row">
             <div class="column">
-                <label for="live_source_auto_sync">跟随 EPG 同步更新：</label>
+                <label for="live_source_auto_sync">跟随 EPG 更新：</label>
                 <select id="live_source_auto_sync" name="live_source_auto_sync" required>
                     <option value="0" <?php if (@$Config['live_source_auto_sync'] == 0) echo 'selected'; ?>>关闭</option>
                     <option value="1" <?php if (@$Config['live_source_auto_sync'] == 1) echo 'selected'; ?>>当前配置</option>
@@ -610,7 +610,7 @@
         </div>
 
         <!-- 第二行 -->
-        <div class="row" style="margin-top: 25px;">
+        <div class="row">
             <div class="column">
                 <label for="gen_live_update_time">生成更新时间：</label>
                 <select id="gen_live_update_time" name="gen_live_update_time" required>
@@ -626,7 +626,7 @@
                 </select>
             </div>
         </div>
-
+        
         <!-- 第三行 -->
         <div class="row" style="margin-top: 25px;">
             <div class="column">
@@ -681,8 +681,8 @@
                 </select>
             </div>
             <div class="column">
-                <label for="token_range"><span class="blue-span" id="change_token_span" onclick="changeTokenUA('token', `<?= $Config['token']; ?>`)">Token</span> 范围：</label>
-                <select id="token_range" name="token_range" required onchange="showTokenRangeMessage(`<?= $Config['token']; ?>`, `<?= $serverUrl; ?>`, `<?= $modRewrite ?>`)">
+                <label for="token_range"><span class="blue-span" id="change_token_span" onclick="changeTokenUA('token')">Token</span> 范围：</label>
+                <select id="token_range" name="token_range" required onchange="showTokenRangeMessage()">
                     <option value="0" <?php if (@$Config['token_range'] == 0) echo 'selected'; ?>>无</option>
                     <option value="1" <?php if (($Config['token_range'] ?? 1) == 1) echo 'selected'; ?>>直播源</option>
                     <option value="2" <?php if (@$Config['token_range'] == 2) echo 'selected'; ?>>EPG</option>
@@ -690,7 +690,7 @@
                 </select>
             </div>
             <div class="column">
-                <label for="user_agent_range"><span class="blue-span" id="change_ua_span" onclick="changeTokenUA('user_agent', `<?= $Config['user_agent']; ?>`)">User-Agent</span> 范围：</label>
+                <label for="user_agent_range"><span class="blue-span" id="change_ua_span" onclick="changeTokenUA('user_agent')">User-Agent</span> 范围：</label>
                 <select id="user_agent_range" name="user_agent_range" required">
                     <option value="0" <?php if (@$Config['user_agent_range'] == 0) echo 'selected'; ?>>无</option>
                     <option value="1" <?php if (@$Config['user_agent_range'] == 1) echo 'selected'; ?>>直播源</option>
