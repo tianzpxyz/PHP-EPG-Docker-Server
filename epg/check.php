@@ -1,4 +1,26 @@
 <?php
+/**
+ * @file check.php
+ * @brief 频道测速与管理脚本
+ *
+ * 该脚本用于对 IPTV 频道源进行批量检测，利用 ffprobe 测试流媒体源的分辨率和响应速度，
+ * 并将结果写入数据库，用于频道可用性与质量的维护。
+ *
+ * 功能说明：
+ * - 前台模式：实时测速并输出结果（需保持浏览器开启）
+ * - 后台模式：支持 backgroundMode 参数，后台执行测速任务，不依赖浏览器
+ * - 支持 IPv6 检测、最低分辨率限制、测速结果缓存与复用
+ * - 支持 cleanMode 参数，清理测速数据并重置频道状态
+ * - 支持按延迟排序、同频道接口数量限制，并自动更新数据库及生成 M3U/TXT 文件
+ *
+ * 参数说明：
+ * - backgroundMode=true   后台运行测速（关闭浏览器也继续执行）
+ * - cleanMode=true        清空测速数据并重置频道状态
+ *
+ * 作者: Tak
+ * GitHub: https://github.com/taksssss/iptv-tool
+ */
+
 // 检测是否为 AJAX 请求或 CLI 运行
 if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
     && php_sapi_name() !== 'cli') {
