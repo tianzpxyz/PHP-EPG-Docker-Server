@@ -426,14 +426,20 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
     foreach ($lines as $line) {
         if (empty($line) || $line[0] === '#') continue;
     
-        // 解析 URL 和设置项
-        $parts = explode('#', $line);
-        $url = trim($parts[0]);
+        // 按 # 分割，支持 \# 作为转义
+        $parts = preg_split('/(?<!\\\\)#/', $line);
+
+        // URL 单独处理
+        $url = trim(str_replace('\#', '#', $parts[0]));
+
+        // 初始化
         $groupPrefix = $userAgent = $replacePattern = '';
         $white_list = $black_list = [];
 
-        foreach ($parts as $part) {
-            $part = ltrim($part);
+        foreach ($parts as $i => $part) {
+            if ($i === 0) continue; // 跳过 URL 部分
+            $part = str_replace('\#', '#', ltrim($part)); // 还原 #
+
             if (stripos($part, 'PF=') === 0 || stripos($part, 'prefix=') === 0) {
                 $groupPrefix = substr($part, strpos($part, '=') + 1);
             } elseif (stripos($part, 'UA=') === 0 || stripos($part, 'useragent=') === 0) {
@@ -484,6 +490,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
             foreach (explode(',', $replacePattern) as $rule) {
                 if (strpos($rule, '->') !== false) {
                     [$search, $replace] = array_map('trim', explode('->', $rule, 2));
+                    $replace = str_replace("\\n", "\n", $replace); // 将 \n 识别成换行
                     $urlContent = str_replace($search, $replace, $urlContent);
                 }
             }
