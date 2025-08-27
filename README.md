@@ -40,7 +40,7 @@ IPTV 工具箱， `Docker` 部署，支持 **EPG 管理**、**直播源管理**�
 
 🖼️ **台标管理**：支持台标模糊匹配，支持 tvbox 接口。
 
-➰ **直播源管理**：支持聚合 TXT/M3U 直播源、测速校验。
+➰ **直播源管理**：支持聚合 TXT/M3U 直播源、测速校验、直播源代理。
 
 🔒 **访问权限控制**：支持设置 TOKEN 、User-Agent、IP 黑白名单。
 
@@ -119,6 +119,31 @@ IPTV 工具箱， `Docker` 部署，支持 **EPG 管理**、**直播源管理**�
     > 可选参数：`-e ENABLE_FFMPEG=true` ，启用 ffmpeg 组件
     > 
     > 无法正常拉取镜像的，可使用同步更新的 `腾讯云容器镜像`（`ccr.ccs.tencentyun.com/taksss/php-epg:latest`）
+
+<details>
+
+<summary>Host 模式部署（IPv6，动态端口）</summary>
+
+为了支持 **IPv6** 或网络直通，推荐使用 `--network host` 方式运行容器。
+
+```bash
+docker run -d \
+  --name php-epg \
+  -v /etc/epg:/htdocs/data \
+  -e HTTP_PORT=5678 \
+  -e HTTPS_PORT=5679 \
+  --network host \
+  --restart unless-stopped \
+  taksss/php-epg:latest
+```
+
+> 容器会读取环境变量设置端口：`HTTP_PORT` → HTTP，`HTTPS_PORT` → HTTPS。
+>
+> Host 模式下无需 `-p`，端口直接暴露在宿主机上。
+> 
+> 确保宿主机对应端口未被占用。
+
+</detail>
 
 <details>
 
