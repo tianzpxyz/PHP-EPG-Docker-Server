@@ -143,7 +143,7 @@ docker run -d \
 > 
 > 确保宿主机对应端口未被占用。
 
-</detail>
+</details>
 
 <details>
 
