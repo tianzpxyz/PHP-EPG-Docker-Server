@@ -848,7 +848,7 @@ function displayPage(data, page) {
         row.innerHTML = `
             <td>${start + index + 1}</td>
             ${columns.map((col, columnIndex) => {
-                let cellContent = (item[col] || '').replace(/&/g, "&amp;");
+                let cellContent = String(item[col] || '').replace(/&/g, "&amp;");
                 let cellClass = '';
                 
                 // 处理 disable 和 modified 列
@@ -1169,7 +1169,6 @@ function openLiveSourceConfigDialog(isNew = false) {
 function deleteSource() {
     const select = document.getElementById('live_source_config');
     const configName = select.value;
-    if (!configName) return;
 
     if (configName === 'default') {
         showMessageModal('默认配置不能删除！');
@@ -1223,22 +1222,58 @@ function cleanUnusedSource() {
 }
 
 // 显示直播源地址
-function showLiveUrl(token, serverUrl, tokenRange, modRewrite) {
-    const config = document.getElementById('live_source_config').value;
-    const tokenStr = (tokenRange == 1 || tokenRange == 3) ? `token=${token}` : '';
-    const urlParam = (config === 'default') ? '' : `url=${config}`;
-    const query = [tokenStr, urlParam].filter(Boolean).join('&');
+async function showLiveUrl() {
+    try {
+        // 并行获取 serverUrl 和 config
+        const [serverRes, configRes] = await Promise.all([
+            fetch('/manage.php?get_env=true'),
+            fetch('/manage.php?get_config=true')
+        ]);
 
-    const m3uPath = modRewrite ? '/tv.m3u' : '/index.php?type=m3u';
-    const txtPath = modRewrite ? '/tv.txt' : '/index.php?type=txt';
+        const serverData = await serverRes.json();
+        const configData = await configRes.json();
 
-    const m3uUrl = `${serverUrl}${m3uPath}${modRewrite && query ? '?' + query : (!modRewrite && query ? '&' + query : '')}`;
-    const txtUrl = `${serverUrl}${txtPath}${modRewrite && query ? '?' + query : (!modRewrite && query ? '&' + query : '')}`;
+        const serverUrl  = serverData.server_url;
+        const token      = configData.token;
+        const tokenRange = parseInt(configData.token_range, 10);
+        const modRewrite = serverData.mod_rewrite ? true : false;
 
-    const message = 
-        `M3U：<br><a href="${m3uUrl}" target="_blank">${m3uUrl}</a>&ensp;<a href="${m3uUrl}" download="tv.m3u">下载</a><br>` +
-        `TXT：<br><a href="${txtUrl}" target="_blank">${txtUrl}</a>&ensp;<a href="${txtUrl}" download="tv.txt">下载</a><br>`;
-    showMessageModal(message);
+        // live_source_config 仍从页面 select/input 获取
+        const liveSourceElem = document.getElementById('live_source_config');
+        const configValue = liveSourceElem ? liveSourceElem.value : 'default';
+
+        const tokenStr = (tokenRange === 1 || tokenRange === 3) ? `token=${token}` : '';
+        const urlParam = (configValue === 'default') ? '' : `url=${configValue}`;
+        const query = [tokenStr, urlParam].filter(Boolean).join('&');
+
+        const m3uPath = modRewrite ? '/tv.m3u' : '/index.php?type=m3u';
+        const txtPath = modRewrite ? '/tv.txt' : '/index.php?type=txt';
+
+        function buildUrl(base, path, query) {
+            let url = base + path;
+            if (query) url += (url.includes('?') ? '&' : '?') + query;
+            return url;
+        }
+        
+        const m3uUrl = buildUrl(serverUrl, m3uPath, query);
+        const txtUrl = buildUrl(serverUrl, txtPath, query);
+        
+        const proxyM3uUrl = buildUrl(m3uUrl, '', 'proxy=1');
+        const proxyTxtUrl = buildUrl(txtUrl, '', 'proxy=1');
+        
+        const message =
+            `M3U：<br><a href="${m3uUrl}" target="_blank">${m3uUrl}</a>&ensp;<a href="${m3uUrl}" download="tv.m3u">下载</a><br>` +
+            `TXT：<br><a href="${txtUrl}" target="_blank">${txtUrl}</a>&ensp;<a href="${txtUrl}" download="tv.txt">下载</a><br>` +
+            `代理访问：<br>` +
+            `<a href="${proxyM3uUrl}" target="_blank">${proxyM3uUrl}</a>&ensp;<a href="${proxyM3uUrl}" download="tv.m3u">下载</a><br>` +
+            `<a href="${proxyTxtUrl}" target="_blank">${proxyTxtUrl}</a>&ensp;<a href="${proxyTxtUrl}" download="tv.txt">下载</a>`;
+        
+        showMessageModal(message);
+
+    } catch (err) {
+        console.error('获取 serverUrl 或 config 失败:', err);
+        showMessageModal('无法获取服务器地址或配置信息，请稍后重试');
+    }
 }
 
 // 显示直播源模板
@@ -1351,7 +1386,7 @@ function filterChannels(type) {
                 row.innerHTML = `<td class="blue-span" 
                                     onclick="showModal('epg', true, { channel: '${item.original}', date: '${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' })}' })">
                                     ${item.original} </td>
-                                <td contenteditable="true">${(item.mapped || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>`;
+                                <td contenteditable="true">${String(item.mapped || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>`;
                 row.querySelector('td[contenteditable]').addEventListener('input', function() {
                     item.mapped = this.textContent.trim();
                     document.getElementById(tableId).dataset[dataAttr] = JSON.stringify(allData);
@@ -1679,16 +1714,34 @@ document.getElementById('importFile').addEventListener('change', function() {
 });
 
 // 修改 token、user_agent 对话框
-function changeTokenUA(type, currentTokenUA) {
-    showMessageModal('');
-    typeStr = (type === 'token' ? 'Token' : 'User-Agent') + '<br>支持多个，每行一个';
-    document.getElementById('messageModalMessage').innerHTML = `
-        <div style="width: 450px;">
-            <h3>修改 ${typeStr}</h3>
-            <textarea id="newTokenUA" style="min-height: 250px; margin-bottom: 15px;">${currentTokenUA}</textarea>
-            <button onclick="updateTokenUA('${type}')" style="margin-bottom: -10px;">确认</button>
-        </div>
-    `;
+async function changeTokenUA(type) {
+    try {
+        // 获取 config
+        const res = await fetch('/manage.php?get_config=true');
+        const config = await res.json();
+
+        // 根据 type 获取对应的值
+        let currentTokenUA = '';
+        if (type === 'token') {
+            currentTokenUA = config.token || '';
+        } else if (type === 'user_agent') {
+            currentTokenUA = config.user_agent || '';
+        }
+
+        showMessageModal('');
+        const typeStr = (type === 'token' ? 'Token' : 'User-Agent') + '<br>支持多个，每行一个';
+        document.getElementById('messageModalMessage').innerHTML = `
+            <div style="width: 450px;">
+                <h3>修改 ${typeStr}</h3>
+                <textarea id="newTokenUA" style="min-height: 250px; margin-bottom: 15px;">${currentTokenUA}</textarea>
+                <button onclick="updateTokenUA('${type}')" style="margin-bottom: -10px;">确认</button>
+            </div>
+        `;
+
+    } catch (err) {
+        console.error('获取 config 失败:', err);
+        showMessageModal('无法获取配置信息，请稍后重试');
+    }
 }
 
 // 更新 token、user_agent 到 config.json
@@ -1715,7 +1768,6 @@ function updateTokenUA(type) {
             }
             else {
                 showMessageModal('修改成功');
-                document.getElementById('change_ua_span').setAttribute('onclick', `changeTokenUA('user_agent', '${newTokenUA.replace(/\n/g, "\\n")}')`);
             }
         } else {
             showMessageModal('修改失败');
@@ -1725,33 +1777,50 @@ function updateTokenUA(type) {
 }
 
 // token_range 更变后进行提示
-function showTokenRangeMessage(token, serverUrl, modRewrite) {
-    var tokenRange = document.getElementById("token_range").value;
-    var message = '';
-    token = token.split('\n')[0];
+async function showTokenRangeMessage() {
+    try {
+        // 并行获取 serverUrl 和 config
+        const [serverRes, configRes] = await Promise.all([
+            fetch('/manage.php?get_env=true'),
+            fetch('/manage.php?get_config=true')
+        ]);
 
-    if (tokenRange == "1" || tokenRange == "3") {
-        const m3u = modRewrite ? `${serverUrl}/tv.m3u?token=${token}` : `${serverUrl}/index.php?type=m3u&token=${token}`;
-        const txt = modRewrite ? `${serverUrl}/tv.txt?token=${token}` : `${serverUrl}/index.php?type=txt&token=${token}`;
-        message += `直播源地址：<br><a href="${m3u}" target="_blank">${m3u}</a><br>
-                    <a href="${txt}" target="_blank">${txt}</a>`;
+        const serverData = await serverRes.json();
+        const configData = await configRes.json();
+
+        const serverUrl  = serverData.server_url;
+        const tokenFull  = configData.token;
+        const modRewrite = serverData.mod_rewrite ? true : false;
+
+        // 从页面 select/input 获取 token_range
+        const tokenRangeElem = document.getElementById("token_range");
+        const tokenRange = tokenRangeElem ? tokenRangeElem.value : "1";
+
+        const token = tokenFull.split('\n')[0];
+        let message = '';
+
+        if (tokenRange === "1" || tokenRange === "3") {
+            const m3u = modRewrite ? `${serverUrl}/tv.m3u?token=${token}` : `${serverUrl}/index.php?type=m3u&token=${token}`;
+            const txt = modRewrite ? `${serverUrl}/tv.txt?token=${token}` : `${serverUrl}/index.php?type=txt&token=${token}`;
+            message += `直播源地址：<br><a href="${m3u}" target="_blank">${m3u}</a><br>
+                        <a href="${txt}" target="_blank">${txt}</a>`;
+        }
+
+        if (tokenRange === "2" || tokenRange === "3") {
+            if (message) message += '<br>';
+            message += `EPG地址：<br><a href="${serverUrl}/index.php?token=${token}" target="_blank">${serverUrl}/index.php?token=${token}</a><br>
+                        <a href="${serverUrl}/t.xml?token=${token}" target="_blank">${serverUrl}/t.xml?token=${token}</a><br>
+                        <a href="${serverUrl}/t.xml.gz?token=${token}" target="_blank">${serverUrl}/t.xml.gz?token=${token}</a>`;
+        }
+
+        if (message) {
+            showMessageModal(message);
+        }
+
+    } catch (err) {
+        console.error('获取 serverUrl 或 config 失败:', err);
+        showMessageModal('无法获取服务器地址或配置信息，请稍后重试');
     }
-
-    if (tokenRange == "2" || tokenRange == "3") {
-        if (message) message += '<br>';
-        message += `EPG地址：<br><a href="${serverUrl}/index.php?token=${token}" target="_blank">${serverUrl}/index.php?token=${token}</a><br>
-                    <a href="${serverUrl}/t.xml?token=${token}" target="_blank">${serverUrl}/t.xml?token=${token}</a><br>
-                    <a href="${serverUrl}/t.xml.gz?token=${token}" target="_blank">${serverUrl}/t.xml.gz?token=${token}</a>`;
-    }
-
-    if (message) {
-        showMessageModal(message);
-    }
-
-    document.getElementById('showLiveUrlBtn').setAttribute(
-        'onclick',
-        `showLiveUrl('${token}', '${serverUrl}', '${tokenRange}', ${modRewrite})`
-    );
 }
 
 // 监听 debug_mode 更变
