@@ -713,8 +713,13 @@ try {
         }
 
         if ($dbResponse !== null) {
-            header('Content-Type: application/json');
-            echo json_encode($dbResponse);
+            header('Content-Type: application/json; charset=utf-8');
+            $json = json_encode($dbResponse);
+            if ($json === false) { // 如果失败，尝试修复编码再输出
+                $dbResponse = mb_convert_encoding($dbResponse, 'UTF-8', 'UTF-8');
+                $json = json_encode($dbResponse);
+            }
+            echo $json;
             exit;
         }
     }
