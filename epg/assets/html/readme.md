@@ -7,7 +7,7 @@
 `URL #TO=+0100`（添加时间偏移）  
 `URL #FT=频道名1, 频道ID2`（白名单，精确匹配）  
 `URL #FT=!频道名1, 频道ID2`（黑名单，精确匹配）  
-`URL #RP=a1->b1, a2->b2`（字符串替换，示例：`#RP=原频道名</display-name>->新频道名</display-name>`）
+`URL #RP={"a1":"b1", "a2":"b2"}`（字符串替换）  
 选项对照表（任选其一即可）：`UA/useragent, TO/timeoffset, FT/filter, RP/replace`  
 tvmao示例：`tvmao, 频道id, [自定义:]频道id, ...`  
 cntv示例：`cntv[:n], 频道id, [自定义:]频道id, ...`  
@@ -55,9 +55,10 @@ Memcached：已移除相关设置，默认打开，缓存在更新数据时清�
 地址前 `#` 临时停用，后 `#` 备注或设置参数，快捷键：Ctrl+/  
 `URL #PF=分组前缀`  
 `URL #UA=自定义UA`  
-`URL #RP=a1->b2, a2->b2, ...`（字符串替换，`\#` 代表 `#` ，`\n` 代表 `换行`）  
+`URL #RP={"a1":"b1", "a2":"b2"}`（字符串替换，`\#` 代表 `#` ，`\n` 代表 `换行`）  
 `URL #FT=频道名1, 分组2, 直播地址3`（白名单，模糊匹配）  
 `URL #FT=!频道名1, 分组2, 直播地址3`（黑名单，模糊匹配）  
+`URL #EXTVLCOPT={"http-user-agent":"xxx","http-referrer":"xxx"}`（在直播地址前加入额外信息）  
 选项对照表（任选其一即可）：`PF/prefix, UA/useragent, RP/replace, FT/filter`  
 多参数：`URL #PF=分组前缀 #UA=自定义UA`  
 在生成 m3u 文件时，「台标地址」、「tvg-id」、「tvg-name」字段可选  
@@ -85,19 +86,19 @@ URL2 #PF=分组前缀2
 #### 示例二：将模板文件替换成本地可用文件  
 设置直播源，并设置直播源内容替换  
 ```
-http://xxx.xx.m3u #RP=rtp://->http://192.168.1.1:6777/udpxy/
+http://xxx.xx.m3u #RP={"rtp://":"http://192.168.1.1:6777/udpxy/"}
 ```
 这里假设xx.m3u为组播直播源，192.168.1.1:6777为udpxy服务端地址
 
 #### 示例三：重命名直播源分组名  
 将「分组1」重命名为「分组2」，「分组3」重命名为「分组4」  
 ```
-http://xxx.xx.m3u #RP=group-title="分组1"->group-title="分组2", group-title="分组3"->group-title="分组4"
+http://xxx.xx.m3u #RP={"group-title=\"分组1\"":"group-title=\"分组2\"","group-title=\"分组3\"":"group-title=\"分组4\""}
 ```
 #### 示例四：在直播地址前加入自定义信息  
-在 `https://xxx` 的直播地址前加入一行，包含自定义 UA xxx
+在所有直播地址前加入一行，包含自定义 User-Agent、Referrer 信息  
 ```
-http://xxx.xx.m3u #RP=https://xxx->\#EXTVLCOPT:http-user-agent=xxx\nhttps://xxx
+http://xxx.xx.m3u #EXTVLCOPT={"http-user-agent":"xxx","http-referrer":"xxx"}
 ```
 #### 示例五：屏蔽分组、频道、直播源  
 屏蔽包含「购物、央视、127.0.0.1」关键字的分组、频道、直播源  
