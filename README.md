@@ -104,13 +104,13 @@ IPTV 工具箱， `Docker` 部署，支持 **EPG 管理**、**直播源管理**�
    ```bash
    docker run -d \
      --name php-epg \
-     -v /etc/epg:/htdocs/data \
+     -v $HOME/epg:/htdocs/data \
      -p 5678:80 \
      --restart unless-stopped \
      taksss/php-epg:latest
    ```
 
-    > 默认数据目录为 `/etc/epg` ，根据需要自行修改
+    > 默认数据目录为 `$HOME/epg` ，根据需要自行修改
     > 
     > 默认端口为 `5678` ，根据需要自行修改（注意端口占用）
     > 
@@ -129,7 +129,7 @@ IPTV 工具箱， `Docker` 部署，支持 **EPG 管理**、**直播源管理**�
 ```bash
 docker run -d \
   --name php-epg \
-  -v /etc/epg:/htdocs/data \
+  -v $HOME/epg:/htdocs/data \
   -e HTTP_PORT=5678 \
   -e HTTPS_PORT=5679 \
   --network host \
@@ -175,7 +175,7 @@ docker run -d \
     ```bash
     docker run -d \
       --name php-epg \
-      -v /etc/epg:/htdocs/data \
+      -v $HOME/epg:/htdocs/data \
       -p 5678:80 \
       --restart unless-stopped \
       --link mysql:mysql \
