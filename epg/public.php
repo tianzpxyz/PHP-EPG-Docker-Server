@@ -64,8 +64,7 @@ function initialDB() {
     $typeIntAuto = $is_sqlite ? 'INTEGER PRIMARY KEY AUTOINCREMENT' : 'INT PRIMARY KEY AUTO_INCREMENT';
     $typeTime = $is_sqlite ? 'DATETIME DEFAULT CURRENT_TIMESTAMP' : 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
 
-    // 创建其他表
-    $otherTables = [
+    $tables = [
         "CREATE TABLE IF NOT EXISTS epg_data (
             date $typeText NOT NULL,
             channel $typeText NOT NULL,
@@ -86,6 +85,21 @@ function initialDB() {
             timestamp $typeTime,
             log_message $typeText NOT NULL
         )",
+        "CREATE TABLE IF NOT EXISTS channels (
+            groupPrefix $typeText,
+            groupTitle $typeText,
+            channelName $typeText,
+            chsChannelName $typeText,
+            streamUrl $typeText,
+            iconUrl $typeText,
+            tvgId $typeText,
+            tvgName $typeText,
+            disable INTEGER DEFAULT 0,
+            modified INTEGER DEFAULT 0,
+            source $typeText,
+            tag $typeText,
+            config $typeText
+        )",
         "CREATE TABLE IF NOT EXISTS channels_info (
             streamUrl $typeText PRIMARY KEY,
             resolution $typeText,
@@ -102,7 +116,7 @@ function initialDB() {
             deny_message TEXT
         )"
     ];
-    foreach ($otherTables as $sql) $db->exec($sql);
+    foreach ($tables as $sql) $db->exec($sql);
 
     // channels 表处理
     $res = $is_sqlite
