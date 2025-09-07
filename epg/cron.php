@@ -99,7 +99,7 @@ if ($current_time >= $end_time_today) {
 }
 
 // 如果跨越了结束时间，则设置为明天的首次执行时间
-if ($next_execution_time >= $end_time_today) {
+if ($next_execution_time > $end_time_today) {
     $first_run_today += 24 * 3600; // 更新明天的开始时间
     $end_time_today += 24 * 3600; // 更新明天的结束时间
     $next_execution_time = $first_run_today; // 重置为明天首次执行时间
@@ -116,7 +116,7 @@ $logContent .= "\t\t\t\t-------运行时间表-------\n";
 
 // 循环输出每次执行的时间
 $current_execution_time = $first_run_today;
-while ($current_execution_time < $end_time_today) {
+while ($current_execution_time <= $end_time_today) {
     $logContent .= "\t\t\t\t\t      " . date('H:i', $current_execution_time) . "\n";
     $current_execution_time += $interval_time;
 }
@@ -154,7 +154,7 @@ while (true) {
     $next_execution_time += $interval_time;
 
     // 如果跨越了结束时间，则设置为明天的首次执行时间
-    if ($next_execution_time >= $end_time_today) {
+    if ($next_execution_time > $end_time_today) {
         $first_run_today += 24 * 3600; // 更新明天的开始时间
         $end_time_today += 24 * 3600; // 更新明天的结束时间
         $next_execution_time = $first_run_today; // 重置为明天首次执行时间
