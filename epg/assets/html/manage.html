@@ -488,13 +488,6 @@
                 </select>
             </div>
             <div class="column">
-                <label for="live_url_comment">线路备注：</label>
-                <select id="live_url_comment" name="live_url_comment" required>
-                    <option value="0" <?php if (@$Config['live_url_comment'] == 0) echo 'selected'; ?>>关闭</option>
-                    <option value="1" <?php if (@$Config['live_url_comment'] == 1) echo 'selected'; ?>>TXT</option>
-                    <option value="2" <?php if (@$Config['live_url_comment'] == 2) echo 'selected'; ?>>M3U</option>
-                    <option value="3" <?php if (@$Config['live_url_comment'] == 3) echo 'selected'; ?>>全部</option>
-                </select>
             </div>
             <div class="column">
             </div>
@@ -626,8 +619,28 @@
                 </select>
             </div>
         </div>
-        
+
         <!-- 第三行 -->
+        <div class="row">
+            <div class="column">
+                <label for="live_url_comment">线路备注：</label>
+                <select id="live_url_comment" name="live_url_comment" required>
+                    <option value="0" <?php if (@$Config['live_url_comment'] == 0) echo 'selected'; ?>>否</option>
+                    <option value="1" <?php if (@$Config['live_url_comment'] == 1) echo 'selected'; ?>>TXT</option>
+                    <option value="2" <?php if (@$Config['live_url_comment'] == 2) echo 'selected'; ?>>M3U</option>
+                    <option value="3" <?php if (@$Config['live_url_comment'] == 3) echo 'selected'; ?>>全部</option>
+                </select>
+            </div>
+            <div class="column">
+                <label for="ku9_secondary_grouping">酷9二级分组：</label>
+                <select id="ku9_secondary_grouping" name="ku9_secondary_grouping" required>
+                    <option value="1" <?php if (@$Config['ku9_secondary_grouping'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (@$Config['ku9_secondary_grouping'] == 0) echo 'selected'; ?>>否</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- 第四行 -->
         <div class="row" style="margin-top: 25px;">
             <div class="column">
                 <button id="cleanUnusedSourceBtn" onclick="cleanUnusedSource()">清理缓存数据</button>
