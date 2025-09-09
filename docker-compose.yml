@@ -4,7 +4,7 @@ services:
     container_name: php-epg
     # 数据目录映射
     volumes:
-      - /etc/epg:/htdocs/data
+      - $HOME/epg:/htdocs/data
     # 默认端口 5678
     ports:
       - "5678:80"
