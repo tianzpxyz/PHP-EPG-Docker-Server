@@ -1,3 +1,6 @@
+## 2025-09-10
+1. ✨**新增**：一键部署脚本
+
 ## 2025-09-07
 1. ⚠️**补充**：上个版本的 Host 模式部署感谢 [Waynenet](https://github.com/Waynenet/iptv-tool)
 2. ✨**新增**：直播源支持 `#EXTVLCOPT` 选项（#116）
