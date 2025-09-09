@@ -30,8 +30,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 
 // 检测 ffmpeg 是否安装
 if (!shell_exec('which ffprobe')) {
-    echo '<p>未检测到 ffmpeg 环境，请使用以下指令重新部署：
-        <br>docker rm php-epg -f && docker run -d --name php-epg -v /etc/epg:/htdocs/data -p 5678:80 -e ENABLE_FFMPEG=true --restart unless-stopped taksss/php-epg:latest</p>';
+    echo '<p>未检测到 ffmpeg 环境，请重新部署。<p>';
     exit;
 }
 
