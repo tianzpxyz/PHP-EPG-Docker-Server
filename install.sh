@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # @file install.sh
 # @brief IPTV工具箱管理脚本
@@ -42,7 +42,7 @@ docker_cmd() {
 
 install_docker() {
     if ! command -v docker >/dev/null 2>&1; then
-        echo "${YELLOW}未检测到 Docker，开始安装...${RESET}"
+        echo -e "${YELLOW}未检测到 Docker，开始安装...${RESET}"
 
         if [ -f /etc/debian_version ]; then
             $SUDO_CMD apt-get update
@@ -50,79 +50,79 @@ install_docker() {
         elif [ -f /etc/redhat-release ]; then
             $SUDO_CMD yum install -y docker
         else
-            echo "${RED}未知系统，请手动安装 Docker${RESET}"
+            echo -e "${RED}未知系统，请手动安装 Docker${RESET}"
             exit 1
         fi
 
         $SUDO_CMD systemctl enable docker
         $SUDO_CMD systemctl start docker
-        echo "${GREEN}Docker 安装完成${RESET}"
+        echo -e "${GREEN}Docker 安装完成${RESET}"
     fi
 }
 
 show_main_menu() {
     clear
-    echo "${CYAN}================================================${RESET}"
-    echo "                   ${BOLD}${GREEN}IPTV工具箱${RESET}"
-    echo "${CYAN}================================================${RESET}"
-    echo "${BOLD}${YELLOW}项目地址：${RESET}${GREEN}https://github.com/taksssss/iptv-tool${RESET}"
-    echo "${CYAN}================================================${RESET}"
-    echo " ${GREEN}1)${RESET} 安装部署"
-    echo " ${GREEN}2)${RESET} 管理容器"
-    echo " ${GREEN}3)${RESET} 更新容器"
-    echo " ${GREEN}4)${RESET} 容器信息"
+    echo -e "${CYAN}================================================${RESET}"
+    echo -e "                   ${BOLD}${GREEN}IPTV工具箱${RESET}"
+    echo -e "${CYAN}================================================${RESET}"
+    echo -e "${BOLD}${YELLOW}项目地址：${RESET}${GREEN}https://github.com/taksssss/iptv-tool${RESET}"
+    echo -e "${CYAN}================================================${RESET}"
+    echo -e " ${GREEN}1)${RESET} 安装部署"
+    echo -e " ${GREEN}2)${RESET} 管理容器"
+    echo -e " ${GREEN}3)${RESET} 更新容器"
+    echo -e " ${GREEN}4)${RESET} 容器信息"
     echo ""
-    echo " ${GREEN}0)${BOLD}${RED} 打赏项目${RESET}"
-    echo " ${GREEN}q)${RESET} 退出"
-    echo "${CYAN}================================================${RESET}"
-    echo -n "${BOLD}请选择: ${RESET}"
+    echo -e " ${GREEN}0)${BOLD}${RED} 打赏项目${RESET}"
+    echo -e " ${GREEN}q)${RESET} 退出"
+    echo -e "${CYAN}================================================${RESET}"
+    echo -ne "${BOLD}请选择: ${RESET}"
 }
 
 show_manage_menu() {
     clear
-    echo "${CYAN}================ 管理容器 ===============${RESET}"
-    echo " ${GREEN}1)${RESET} 停止容器"
-    echo " ${GREEN}2)${RESET} 重启容器"
-    echo " ${GREEN}3)${RESET} 卸载容器"
-    echo " ${GREEN}0)${RESET} 返回上级"
-    echo "${CYAN}=========================================${RESET}"
-    echo -n "${BOLD}请选择: ${RESET}"
+    echo -e "${CYAN}================ 管理容器 ===============${RESET}"
+    echo -e " ${GREEN}1)${RESET} 停止容器"
+    echo -e " ${GREEN}2)${RESET} 重启容器"
+    echo -e " ${GREEN}3)${RESET} 卸载容器"
+    echo -e " ${GREEN}0)${RESET} 返回上级"
+    echo -e "${CYAN}=========================================${RESET}"
+    echo -ne "${BOLD}请选择: ${RESET}"
 }
 
 show_update_menu() {
     clear
-    echo "${CYAN}================ 更新容器 ===============${RESET}"
-    echo " ${GREEN}1)${RESET} 手动更新"
-    echo " ${GREEN}2)${RESET} 自动更新"
-    echo " ${GREEN}0)${RESET} 返回上级"
-    echo "${CYAN}=========================================${RESET}"
-    echo -n "${BOLD}请选择: ${RESET}"
+    echo -e "${CYAN}================ 更新容器 ===============${RESET}"
+    echo -e " ${GREEN}1)${RESET} 手动更新"
+    echo -e " ${GREEN}2)${RESET} 自动更新"
+    echo -e " ${GREEN}0)${RESET} 返回上级"
+    echo -e "${CYAN}=========================================${RESET}"
+    echo -ne "${BOLD}请选择: ${RESET}"
 }
 
 show_info_menu() {
     clear
-    echo "${CYAN}================ 容器信息 ===============${RESET}"
-    echo " ${GREEN}1)${RESET} 查看状态"
-    echo " ${GREEN}2)${RESET} 查看日志"
-    echo " ${GREEN}0)${RESET} 返回上级"
-    echo "${CYAN}=========================================${RESET}"
-    echo -n "${BOLD}请选择: ${RESET}"
+    echo -e "${CYAN}================ 容器信息 ===============${RESET}"
+    echo -e " ${GREEN}1)${RESET} 查看状态"
+    echo -e " ${GREEN}2)${RESET} 查看日志"
+    echo -e " ${GREEN}0)${RESET} 返回上级"
+    echo -e "${CYAN}=========================================${RESET}"
+    echo -ne "${BOLD}请选择: ${RESET}"
 }
 
 donate_info() {
     clear
-    echo "${CYAN}=============================${RESET}"
-    echo " ${BOLD}${YELLOW}感谢您的支持${RESET}"
-    echo "${CYAN}=============================${RESET}"
+    echo -e "${CYAN}=============================${RESET}"
+    echo -e " ${BOLD}${YELLOW}感谢您的支持${RESET}"
+    echo -e "${CYAN}=============================${RESET}"
 
-    echo "\n${YELLOW}微信扫码：${RESET}\n"
+    echo -e "\n${YELLOW}微信扫码：${RESET}\n"
     echo H4sIAAAAAAAAA71UQRKEMAi77yt4ag4ceME+0JfsaFsIWOt4WGc6jlYaAgndvra9uD5vJqv5ZPsqL2l7HqDSIux4YnnuMoOJJNyGhIDZf8NjSvQUkXJbj0baOBYSzuzclQo6W4Fg9VvO+OnkTff3drQPBFLvdmvHkMLlgKz4owdoZtylgqcHqzv6zuEL5tLYOgQKPpKRxm57UbmrQCkLt8nNNoxjEm2UkvJ6ytjAwSpkYPOo1zKyR+k3DgIxYUPARS3doxedNnKep7jWJBiCvYpUeiexwJ/POUrXmX2aCS7t0f0wamBpzClo6Lzmfr4neOTK01gWPvzwlrjerCrNRm3p2n+v1/P9AFfd7fZsBwAA | base64 -d | gzip -d
 
-    echo "\n${YELLOW}支付宝扫码：${RESET}\n"
+    echo -e "\n${YELLOW}支付宝扫码：${RESET}\n"
     echo H4sIAAAAAAAAA71U2w3DMAj87xQ3Kh98MEEHzCRV7QBHYjtKpUZCedjAAQdsb9selNeTYEc8bG9lQTuWfmN+3I/Un01rbDnBMADhU1y+/9JupDvQgfbMI2G734N7B4GHPrEb86Aj6ecCr4RRVYx9zqwnWMj8o5rhWED5YYc/h7BgGFmGjM/CCsQGcyystKhTtMeiZtlZ6ZxFDzFNOclg9fTiL61BCdGyzKiUqfUlGLvmEU1GT5qhZfcmxdGG0hnQWhGNCyPPV3lQxyUJBQUxwjuo5kzHZN7aG1mPmhxYI23lqkq5B6IvhT608qCchA/JjQ0Caq0k3fYBVCDT+GVr8A7Qkf7Qj63x/i6P430ACGdl934HAAA= | base64 -d | gzip -d
 
     echo ""
-    echo "${CYAN}=============================${RESET}"
+    echo -e "${CYAN}=============================${RESET}"
 }
 
 choose_image() {
@@ -202,12 +202,12 @@ start_container() {
             --restart unless-stopped \
             $IMAGE_NAME
     else
-        echo "${RED}无效选择${RESET}"
+        echo -e "${RED}无效选择${RESET}"
         return
     fi
 
     echo ""
-    echo "${GREEN}容器已部署 ✅${RESET}"
+    echo -e "${GREEN}容器已部署 ✅${RESET}"
     echo "数据目录：$DATA_DIR"
     echo "HTTP端口：$HTTP_PORT"
     [ -n "$HTTPS_PORT" ] && echo "HTTPS端口：$HTTPS_PORT"
@@ -215,23 +215,23 @@ start_container() {
     echo "ffmpeg 启用：$ENABLE_FFMPEG"
     echo ""
     echo "访问地址: http://{服务器IP地址}:$HTTP_PORT/manage.php"
-    echo "${BOLD}${RED}请务必阅读页面底部「使用说明」！${RESET}"
+    echo -e "${BOLD}${RED}请务必阅读页面底部「使用说明」！${RESET}"
     echo ""
 }
 
 stop_container() {
     docker_cmd stop $CONTAINER_NAME 2>/dev/null && \
-    echo "${GREEN}容器已停止${RESET}" || echo "${RED}容器未运行${RESET}"
+    echo -e "${GREEN}容器已停止${RESET}" || echo "${RED}容器未运行${RESET}"
 }
 
 restart_container() {
     docker_cmd restart $CONTAINER_NAME 2>/dev/null && \
-    echo "${GREEN}容器已重启${RESET}" || echo "${RED}容器未运行${RESET}"
+    echo -e "${GREEN}容器已重启${RESET}" || echo "${RED}容器未运行${RESET}"
 }
 
 uninstall_container() {
     docker_cmd rm -f $CONTAINER_NAME 2>/dev/null && \
-    echo "${GREEN}容器已卸载${RESET}" || echo "${RED}容器不存在${RESET}"
+    echo -e "${GREEN}容器已卸载${RESET}" || echo "${RED}容器不存在${RESET}"
 }
 
 manual_update() {
@@ -240,7 +240,7 @@ manual_update() {
     docker_cmd run --rm --name $UPDATE_CONTAINER \
         -v /var/run/docker.sock:/var/run/docker.sock \
         containrrr/watchtower $CONTAINER_NAME --cleanup --run-once
-    echo "${GREEN}更新完成 ✅${RESET}"
+    echo -e "${GREEN}更新完成 ✅${RESET}"
 }
 
 auto_update() {
@@ -249,7 +249,7 @@ auto_update() {
     HOURS=${HOURS:-1}
     docker_cmd rm -f $UPDATE_CONTAINER >/dev/null 2>&1
     if [ "$HOURS" -eq 0 ]; then
-        echo "${YELLOW}已关闭自动更新${RESET}"
+        echo -e "${YELLOW}已关闭自动更新${RESET}"
         return
     fi
     INTERVAL=$((HOURS * 3600))
@@ -257,14 +257,14 @@ auto_update() {
         -v /var/run/docker.sock:/var/run/docker.sock \
         --restart unless-stopped \
         containrrr/watchtower $CONTAINER_NAME --cleanup --interval $INTERVAL
-    echo "${GREEN}已启动自动更新，每 $HOURS 小时检查一次 ✅${RESET}"
+    echo -e "${GREEN}已启动自动更新，每 $HOURS 小时检查一次 ✅${RESET}"
 }
 
 status_container() {
     if docker_cmd ps -a --format '{{.Names}}' | grep -w $CONTAINER_NAME >/dev/null; then
         docker_cmd ps -a --filter "name=$CONTAINER_NAME"
     else
-        echo "${RED}容器不存在${RESET}"
+        echo -e "${RED}容器不存在${RESET}"
     fi
 }
 
@@ -288,7 +288,7 @@ while true; do
                     2) restart_container ;;
                     3) uninstall_container ;;
                     0) break ;;
-                    *) echo "${RED}无效选择${RESET}" ;;
+                    *) echo -e "${RED}无效选择${RESET}" ;;
                 esac
                 [ "$sub_choice" = "0" ] || { echo "按回车键继续..."; read dummy; }
             done
@@ -301,7 +301,7 @@ while true; do
                     1) manual_update ;;
                     2) auto_update ;;
                     0) break ;;
-                    *) echo "${RED}无效选择${RESET}" ;;
+                    *) echo -e "${RED}无效选择${RESET}" ;;
                 esac
                 [ "$sub_choice" = "0" ] || { echo "按回车键继续..."; read dummy; }
             done
@@ -314,14 +314,14 @@ while true; do
                     1) status_container ;;
                     2) show_logs ;;
                     0) break ;;
-                    *) echo "${RED}无效选择${RESET}" ;;
+                    *) echo -e "${RED}无效选择${RESET}" ;;
                 esac
                 [ "$sub_choice" = "0" ] || { echo "按回车键继续..."; read dummy; }
             done
             ;;
         0) donate_info ;;
         q) echo "退出"; exit 0 ;;
-        *) echo "${RED}无效选择${RESET}" ;;
+        *) echo -e "${RED}无效选择${RESET}" ;;
     esac
     [ "$choice" = "2" ] || [ "$choice" = "3" ] || [ "$choice" = "4" ] || { echo "按回车键继续..."; read dummy; }
 done
