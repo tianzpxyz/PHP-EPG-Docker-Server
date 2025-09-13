@@ -324,6 +324,23 @@ function liveFetchHandler($query_params) {
         $content = str_replace("tvg-logo=\"/data/icon/", "tvg-logo=\"$serverUrl/data/icon/", $content);
     }
 
+    // 如果启用代理模式
+    if (!empty($query_params['proxy'])) {
+        $proxyPrefix = $serverUrl . '/proxy.php?token=' . urlencode($Config['proxy_token']) . '&url=';
+
+        if ($query_params['type'] === 'm3u') {
+            // 匹配每一行 URL（不以 # 开头的行）
+            $content = preg_replace_callback('/^(?!#)(.+)$/m', function ($matches) use ($proxyPrefix) {
+                return $proxyPrefix . urlencode(trim($matches[1]));
+            }, $content);
+        } elseif ($query_params['type'] === 'txt') {
+            // 匹配频道行 "频道名,URL"
+            $content = preg_replace_callback('/^([^,#]+),(?!#)(.+)$/m', function ($matches) use ($proxyPrefix) {
+                return $matches[1] . ',' . $proxyPrefix . urlencode(trim($matches[2]));
+            }, $content);
+        }
+    }
+
     echo $content;
     exit;
 }

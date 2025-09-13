@@ -24,18 +24,32 @@ if ($Config['interval_time'] !== 0) {
     }
 }
 
-// 过渡到新的 md5 密码并生成默认 token、user_agent （如果不存在或为空）
-if (!preg_match('/^[a-f0-9]{32}$/i', $Config['manage_password']) || empty($Config['token']) || empty($Config['user_agent'])) {
-    if (!preg_match('/^[a-f0-9]{32}$/i', $Config['manage_password'])) {
-        $Config['manage_password'] = md5($Config['manage_password']);
+// 简单随机字符串函数
+function randStr($len = 10) {
+    return substr(bin2hex(random_bytes($len)), 0, $len);
+}
+
+$needSave = false;
+
+// 管理密码转 MD5
+if (!preg_match('/^[a-f0-9]{32}$/i', $Config['manage_password'])) {
+    $Config['manage_password'] = md5($Config['manage_password']);
+    $needSave = true;
+}
+
+// 统一检查几个字段
+foreach (['token', 'user_agent', 'proxy_token'] as $k) {
+    if (empty($Config[$k])) {
+        $Config[$k] = randStr();
+        $needSave = true;
     }
-    if (empty($Config['token'])) {
-        $Config['token'] = substr(bin2hex(random_bytes(5)), 0, 10);  // 生成 10 位随机字符串
-    }
-    if (empty($Config['user_agent'])) {
-        $Config['user_agent'] = substr(bin2hex(random_bytes(5)), 0, 10);  // 生成 10 位随机字符串
-    }
-    file_put_contents($configPath, json_encode($Config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+}
+
+if ($needSave) {
+    file_put_contents(
+        $configPath,
+        json_encode($Config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+    );
 }
 
 // 处理密码更新请求
@@ -176,8 +190,8 @@ try {
 
         // 确定操作类型
         $action_map = [
-            'get_update_logs', 'get_cron_logs', 'get_channel', 'get_epg_by_channel',
-            'get_icon', 'get_channel_bind_epg', 'get_channel_match', 'get_gen_list',
+            'get_config', 'get_env', 'get_update_logs', 'get_cron_logs', 'get_channel', 
+            'get_epg_by_channel', 'get_icon', 'get_channel_bind_epg', 'get_channel_match', 'get_gen_list',
             'get_live_data', 'parse_source_info', 'download_source_data', 'delete_unused_icons', 
             'delete_source_config', 'delete_unused_live_data', 'get_version_log', 'get_readme_content', 
             'get_access_log', 'get_access_stats', 'clear_access_log', 'get_ip_list', 'test_redis'
@@ -186,6 +200,20 @@ try {
 
         // 根据操作类型执行不同的逻辑
         switch ($action) {
+            case 'get_config':
+                // 获取配置信息
+                $dbResponse = $Config;
+                break;
+
+            case 'get_env':
+                // 获取 serverUrl、modRewrite
+                $modRewrite = false;
+                if (function_exists('apache_get_modules') && in_array('mod_rewrite', apache_get_modules())) {
+                    $modRewrite = true;
+                }
+                $dbResponse = ['server_url' => $serverUrl, 'mod_rewrite' => $modRewrite];
+                break;
+
             case 'get_update_logs':
                 // 获取更新日志
                 $dbResponse = $db->query("SELECT * FROM update_log")->fetchAll(PDO::FETCH_ASSOC);
@@ -685,8 +713,13 @@ try {
         }
 
         if ($dbResponse !== null) {
-            header('Content-Type: application/json');
-            echo json_encode($dbResponse);
+            header('Content-Type: application/json; charset=utf-8');
+            $json = json_encode($dbResponse);
+            if ($json === false) { // 如果失败，尝试修复编码再输出
+                $dbResponse = mb_convert_encoding($dbResponse, 'UTF-8', 'UTF-8');
+                $json = json_encode($dbResponse);
+            }
+            echo $json;
             exit;
         }
     }
@@ -977,12 +1010,6 @@ try {
     }
 } catch (Exception $e) {
     // 处理数据库连接错误
-}
-
-// 判断 mod_rewrite 是否生效
-$modRewrite = false;
-if (function_exists('apache_get_modules') && in_array('mod_rewrite', apache_get_modules())) {
-    $modRewrite = true;
 }
 
 // 生成配置管理表单

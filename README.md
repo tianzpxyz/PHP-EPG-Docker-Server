@@ -40,7 +40,7 @@ IPTV 工具箱， `Docker` 部署，支持 **EPG 管理**、**直播源管理**�
 
 🖼️ **台标管理**：支持台标模糊匹配，支持 tvbox 接口。
 
-➰ **直播源管理**：支持聚合 TXT/M3U 直播源、测速校验。
+➰ **直播源管理**：支持聚合 TXT/M3U 直播源、测速校验、直播源代理。
 
 🔒 **访问权限控制**：支持设置 TOKEN 、User-Agent、IP 黑白名单。
 
@@ -82,96 +82,19 @@ IPTV 工具箱， `Docker` 部署，支持 **EPG 管理**、**直播源管理**�
 
 ### [CHANGELOG.md](./CHANGELOG.md)
 
-## TODO：
-
-- [x] 支持返回超级直播格式
-- [x] 整合更轻量的 `alpine-apache-php` 容器
-- [x] 整合生成 `xml` 文件
-- [x] 支持多对一频道映射
-- [x] 支持繁体频道匹配
-- [x] 仅保存指定频道列表节目单
-- [x] 导入/导出配置
-- [x] 频道指定 `EPG` 源
-- [x] 生成台标信息
-- [x] 直播源管理
-
 ## 🚀 部署步骤
-
-1. 配置 `Docker` 环境
-
-2. 拉取镜像并运行：
-
-   ```bash
-   docker run -d \
-     --name php-epg \
-     -v /etc/epg:/htdocs/data \
-     -p 5678:80 \
-     --restart unless-stopped \
-     taksss/php-epg:latest
-   ```
-
-    > 默认数据目录为 `/etc/epg` ，根据需要自行修改
-    > 
-    > 默认端口为 `5678` ，根据需要自行修改（注意端口占用）
-    > 
-    > 可选参数：`-e PHP_MEMORY_LIMIT=512M` ，设置 PHP 内存限制，默认 `512M`
-    > 
-    > 可选参数：`-e ENABLE_FFMPEG=true` ，启用 ffmpeg 组件
-    > 
-    > 无法正常拉取镜像的，可使用同步更新的 `腾讯云容器镜像`（`ccr.ccs.tencentyun.com/taksss/php-epg:latest`）
-
-<details>
-
-<summary>（可选）同时部署 MySQL 、 phpMyAdmin 及 php-epg</summary>
-
-- **方法1：** 新建 [`docker-compose.yml`](./docker-compose.yml) 文件后，在同目录执行 `docker-compose up -d`
-- **方法2：** 依次执行以下指令：
-    ```bash
-    docker run -d \
-      --name mysql \
-      -p 3306:3306 \
-      -e MYSQL_ROOT_PASSWORD=root_password \
-      -e MYSQL_DATABASE=phpepg \
-      -e MYSQL_USER=phpepg \
-      -e MYSQL_PASSWORD=phpepg \
-      --restart unless-stopped \
-      mysql:8.0
-    ```
-    ```bash
-    docker run -d \
-      --name phpmyadmin \
-      -p 8080:80 \
-      -e PMA_HOST=mysql \
-      -e PMA_PORT=3306 \
-      --link mysql:mysql \
-      --restart unless-stopped \
-      phpmyadmin/phpmyadmin:latest
-    ```
-    ```bash
-    docker run -d \
-      --name php-epg \
-      -v /etc/epg:/htdocs/data \
-      -p 5678:80 \
-      --restart unless-stopped \
-      --link mysql:mysql \
-      --link phpmyadmin:phpmyadmin \
-      taksss/php-epg:latest
-    ```
- 
-</details>
-
-## 🆙 版本升级
-
-一键升级
-```bash
-docker run --rm -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtower php-epg --cleanup --run-once
+安装、更新、卸载脚本：
 ```
-
-自动检测
-```bash
-docker run -d --name php-epg-update -v /var/run/docker.sock:/var/run/docker.sock --restart unless-stopped containrrr/watchtower php-epg --cleanup --interval 3600
+bash <(curl -Ls https://raw.githubusercontent.com/taksssss/iptv-tool/master/install.sh)
 ```
-
+或者
+```
+bash <(curl -Ls https://gitee.com/taksssss/iptv-tool/raw/main/install.sh)
+```
+或者
+```
+bash <(curl -Ls https://gcore.jsdelivr.net/gh/taksssss/iptv-tool@master/install.sh)
+```
 
 ## 🛠️ 使用步骤
 

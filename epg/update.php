@@ -183,7 +183,7 @@ function getChannelBindEPG() {
 }
 
 // 下载 XML 数据并存入数据库
-function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $white_list, $black_list, $time_offset) {
+function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $white_list, $black_list, $time_offset, $replacePattern) {
     global $Config;
     [$xml_data, $error, $mtime] = downloadData($xml_url, $userAgent);
     if ($xml_data !== false) {
@@ -203,6 +203,16 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
             : round($fileSize / 1024, 2) . ' KB';
         logMessage($log_messages, "【下载】 成功 | xml 文件大小：{$fileSizeReadable}{$mtimeStr}");
 
+        // 应用多个字符串替换规则（格式：a1->b1,a2->b2,...）
+        if (strpos($replacePattern, '->') !== false) {
+            foreach (explode(',', $replacePattern) as $rule) {
+                if (strpos($rule, '->') !== false) {
+                    [$search, $replace] = array_map('trim', explode('->', $rule, 2));
+                    $xml_data = str_replace($search, $replace, $xml_data);
+                }
+            }
+        }
+        
         $xml_data = mb_convert_encoding($xml_data, 'UTF-8'); // 转换成 UTF-8 编码
         if (($Config['cht_to_chs'] ?? 1) === 2) { $xml_data = t2s($xml_data); }
         $db->beginTransaction();
@@ -322,6 +332,7 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
                     'title' => $programmeData['title'],
                     'desc' => $programmeData['desc']
                 ];
+                $programmeCount++;
             }
     
             $currentChannelProgrammes[$channelId]['channel_name'] = $channelName;
@@ -567,6 +578,7 @@ foreach ($Config['xml_urls'] as $xml_url) {
     $userAgent = '';
     $white_list = $black_list = [];
     $time_offset = '';
+    $replacePattern = '';
     
     logMessage($log_messages, "【地址】 $cleaned_url");
 
@@ -588,10 +600,13 @@ foreach ($Config['xml_urls'] as $xml_url) {
         } elseif (stripos($part, 'TO=') === 0 || stripos($part, 'timeoffset=') === 0) {
             $time_offset = substr($part, strpos($part, '=') + 1);
             logMessage($log_messages, "【修正】 时间偏移：$time_offset");
+        } elseif (stripos($part, 'RP=') === 0 || stripos($part, 'replace=') === 0) {
+            $replacePattern = trim(substr($part, strpos($part, '=') + 1));
+            logMessage($log_messages, "【替换】 $replacePattern");
         }
     }
     
-    downloadXmlData($cleaned_url, $userAgent, $db, $log_messages, $gen_list, $white_list, $black_list, $time_offset);
+    downloadXmlData($cleaned_url, $userAgent, $db, $log_messages, $gen_list, $white_list, $black_list, $time_offset, $replacePattern);
 }
 
 // 更新 iconList.json 及生成 xmltv 文件
