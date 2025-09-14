@@ -37,6 +37,7 @@
     <form method="POST" id="settingsForm">
         <label for="xml_urls">【EPG地址】</label>
         <span class="blue-span" id="channelbind" onclick="showModal('channelbindepg')">（频道指定源）</span>
+        <span class="blue-span" id="mobileComment_epg" onclick="commentAll('xml_urls')">【禁用/启用】</span>
         <br><br>
         <textarea id="xml_urls" name="xml_urls"><?= implode("\n", array_map('trim', $Config['xml_urls'])); ?></textarea>
         <br><br>
@@ -119,7 +120,7 @@
         版本日志
     </a>
     <a onclick="showHelpModal();" style="color: #888;">使用说明</a>
-    <a onclick="showDonationImage()" style="color: #888;">☕捐赠</a>
+    <a onclick="showDonationImage()" style="color: #888;">☕打赏</a>
     <a href="https://gitee.com/taksssss/iptv-tool/blob/main/DONATIONS.md" target="_blank" style="color: #888; text-decoration: none;">
         🌹鸣谢列表
     </a>
@@ -381,9 +382,10 @@
             <label for="live_source_config">（配置：</label>
             <select id="live_source_config" style="height: 26px; font-size: 14px;" onchange="onLiveSourceConfigChange()"></select>
             <span class="blue-span" onclick="openLiveSourceConfigDialog(true)">新建</span>
-            <span class="blue-span" onclick="openLiveSourceConfigDialog(false)">另存</span>                   
+            <span class="blue-span" onclick="openLiveSourceConfigDialog(false)">另存</span>
             <span class="blue-span" onclick="deleteSource()">删除</span>
             <label for="live_source_config">）</label>
+            <span class="blue-span" id="mobileComment_source" onclick="commentAll('sourceUrlTextarea')">【禁用/启用】</span>
             <br><textarea id="sourceUrlTextarea"></textarea>
         </div>
         <br>
