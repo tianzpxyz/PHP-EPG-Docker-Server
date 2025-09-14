@@ -11,11 +11,16 @@
 
 require_once 'public.php';
 
-$token = $_GET['token'] ?? '';
-$url   = $_GET['url']   ?? '';
+// 只传加密后的 URL
+$encUrl = $_GET['url'] ?? '';
+if (!$encUrl) {
+    http_response_code(403);
+    exit('Forbidden');
+}
 
-// 校验 token
-if ($token !== $Config['proxy_token'] || !$url) {
+// 解密 URL
+$url = decryptUrl($encUrl, $Config['token']);
+if ($url === false) {
     http_response_code(403);
     exit('Forbidden');
 }
@@ -64,18 +69,20 @@ if ($isM3U8) {
 
     // 计算基础路径（M3U8 所在目录）
     $base = preg_replace('/\/[^\/]*$/', '/', $finalUrl);
-    $proxy = '/proxy.php?token=' . urlencode($token) . '&url=';
+    $proxy = '/proxy.php?url=';
 
     // 替换 M3U8 中的 TS / 子 M3U8 地址为代理地址
     echo preg_replace_callback(
         '/^(?!#)(.+\.(ts|m3u8).*?)$/mi',
-        function ($m) use ($base, $proxy) {
+        function ($m) use ($base, $proxy, $Config) {
             $link = trim($m[1]);
             // 如果是相对路径，补全为绝对 URL
             if (!preg_match('/^[a-zA-Z]+:\/\//', $link)) {
                 $link = $base . $link;
             }
-            return $proxy . urlencode($link);
+            // 用 token 加密链接
+            $encLink = encryptUrl($link, $Config['token']);
+            return $proxy . urlencode($encLink);
         },
         $data
     );

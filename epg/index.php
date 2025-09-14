@@ -37,13 +37,27 @@ $userAgentRange = $Config['user_agent_range'] ?? 0;
 $live = in_array($query_params['type'] ?? '', ['m3u', 'txt']);
 $accessDenied = false;
 
-// 验证token
-if ($tokenRange !== 0) {
-    $allowedTokens = array_map('trim', explode(PHP_EOL, $Config['token'] ?? ''));
-    $token = $query_params['token'] ?? '';
-    if (!isAllowed($token, $allowedTokens, $tokenRange, (bool)$live)) {
+// 验证 token
+$token = $query_params['token'] ?? '';
+
+if (!empty($query_params['proxy'])) {
+    // 代理模式：只验证 MD5 前 8 位
+    $allowedTokens = array_map(function($t) {
+        return substr(md5(trim($t)), 0, 8);
+    }, explode(PHP_EOL, $Config['token'] ?? ''));
+
+    if (!in_array($token, $allowedTokens)) {
         $accessDenied = true;
-        $denyMessage = '访问被拒绝：无效Token。';
+        $denyMessage = '访问被拒绝：无效代理Token。';
+    }
+} else {
+    // 普通模式：原始 token 验证
+    if ($tokenRange !== 0) {
+        $allowedTokens = array_map('trim', explode(PHP_EOL, $Config['token'] ?? ''));
+        if (!isAllowed($token, $allowedTokens, $tokenRange, (bool)$live)) {
+            $accessDenied = true;
+            $denyMessage = '访问被拒绝：无效Token。';
+        }
     }
 }
 
@@ -326,17 +340,16 @@ function liveFetchHandler($query_params) {
 
     // 如果启用代理模式
     if (!empty($query_params['proxy'])) {
-        $proxyPrefix = $serverUrl . '/proxy.php?token=' . urlencode($Config['proxy_token']) . '&url=';
-
         if ($query_params['type'] === 'm3u') {
-            // 匹配每一行 URL（不以 # 开头的行）
-            $content = preg_replace_callback('/^(?!#)(.+)$/m', function ($matches) use ($proxyPrefix) {
-                return $proxyPrefix . urlencode(trim($matches[1]));
+            $content = preg_replace_callback('/^(?!#)(.+)$/m', function ($matches) use ($Config, $serverUrl) {
+                $encUrl = urlencode(encryptUrl(trim($matches[1]), $Config['token']));
+                return $serverUrl . '/proxy.php?url=' . $encUrl;
             }, $content);
+    
         } elseif ($query_params['type'] === 'txt') {
-            // 匹配频道行 "频道名,URL"
-            $content = preg_replace_callback('/^([^,#]+),(?!#)(.+)$/m', function ($matches) use ($proxyPrefix) {
-                return $matches[1] . ',' . $proxyPrefix . urlencode(trim($matches[2]));
+            $content = preg_replace_callback('/^([^,#]+),(?!#)(.+)$/m', function ($matches) use ($Config, $serverUrl) {
+                $encUrl = urlencode(encryptUrl(trim($matches[2]), $Config['token']));
+                return $matches[1] . ',' . $serverUrl . '/proxy.php?url=' . $encUrl;
             }, $content);
         }
     }

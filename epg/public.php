@@ -995,4 +995,18 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
     file_put_contents("{$liveDir}{$fileName}.m3u", $m3uContent);
     file_put_contents("{$liveDir}{$fileName}.txt", $txtContent);
 }
+
+// 加密 URL
+function encryptUrl($url, $token) {
+    $key = substr(hash('sha256', $token), 0, 32);
+    $iv  = substr(hash('md5', $token), 0, 16);
+    return base64_encode(openssl_encrypt($url, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv));
+}
+
+// 解密 URL
+function decryptUrl($enc, $token) {
+    $key = substr(hash('sha256', $token), 0, 32);
+    $iv  = substr(hash('md5', $token), 0, 16);
+    return openssl_decrypt(base64_decode($enc), 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
+}
 ?>
