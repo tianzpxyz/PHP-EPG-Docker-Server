@@ -31,14 +31,11 @@ function randStr($len = 10) {
 
 $needSave = false;
 
-// 管理密码转 MD5
-if (!preg_match('/^[a-f0-9]{32}$/i', $Config['manage_password'])) {
-    $Config['manage_password'] = md5($Config['manage_password']);
-    $needSave = true;
-}
+// 首次使用，提示修改密码
+$forceChangePassword = empty($Config['manage_password']);
 
 // 统一检查几个字段
-foreach (['token', 'user_agent', 'proxy_token'] as $k) {
+foreach (['token', 'user_agent'] as $k) {
     if (empty($Config[$k])) {
         $Config[$k] = randStr();
         $needSave = true;
@@ -53,27 +50,23 @@ if ($needSave) {
 }
 
 // 处理密码更新请求
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
-    $oldPassword = md5($_POST['old_password']);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
     $newPassword = md5($_POST['new_password']);
 
-    // 验证原密码是否正确
-    if ($oldPassword === $Config['manage_password']) {
-        // 原密码正确，更新配置中的密码
-        $Config['manage_password'] = $newPassword;
-
-        // 将新配置写回 config.json
-        file_put_contents($configPath, json_encode($Config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-
-        // 设置密码更改成功的标志变量
-        $passwordChanged = true;
-    } else {
+    // 如果不是强制设置密码，则验证原密码
+    if (empty($forceChangePassword) && md5($_POST['old_password']) !== $Config['manage_password']) {
         $passwordChangeError = "原密码错误";
+    } else {
+        // 更新密码并写入配置
+        $Config['manage_password'] = $newPassword;
+        file_put_contents($configPath, json_encode($Config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        $passwordChanged = true;
+        $forceChangePassword = false;
     }
 }
 
 // 检查是否提交登录表单
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['login'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     $password = md5($_POST['password']);
 
     // 验证密码
@@ -186,7 +179,7 @@ try {
     $requestMethod = $_SERVER['REQUEST_METHOD'];
     $dbResponse = null;
 
-    if ($requestMethod == 'GET') {
+    if ($requestMethod === 'GET') {
 
         // 确定操作类型
         $action_map = [
@@ -203,6 +196,11 @@ try {
             case 'get_config':
                 // 获取配置信息
                 $dbResponse = $Config;
+                
+                // 同时返回 MD5 token
+                if (isset($dbResponse['token'])) {
+                    $dbResponse['token_md5'] = substr(md5($dbResponse['token']), 0, 8);
+                }
                 break;
 
             case 'get_env':
