@@ -39,26 +39,20 @@ $accessDenied = false;
 
 // 验证 token
 $token = $query_params['token'] ?? '';
+$rawTokens = array_map('trim', explode(PHP_EOL, $Config['token'] ?? ''));
 
+// 生成允许的 token 列表
+$allowedTokens = $rawTokens;
 if (!empty($query_params['proxy'])) {
-    // 代理模式：只验证 MD5 前 8 位
-    $allowedTokens = array_map(function($t) {
-        return substr(md5(trim($t)), 0, 8);
-    }, explode(PHP_EOL, $Config['token'] ?? ''));
+    foreach ($rawTokens as $t) {
+        $allowedTokens[] = substr(md5($t), 0, 8);
+    }
+}
 
-    if (!in_array($token, $allowedTokens)) {
-        $accessDenied = true;
-        $denyMessage = '访问被拒绝：无效代理Token。';
-    }
-} else {
-    // 普通模式：原始 token 验证
-    if ($tokenRange !== 0) {
-        $allowedTokens = array_map('trim', explode(PHP_EOL, $Config['token'] ?? ''));
-        if (!isAllowed($token, $allowedTokens, $tokenRange, (bool)$live)) {
-            $accessDenied = true;
-            $denyMessage = '访问被拒绝：无效Token。';
-        }
-    }
+// 验证 token
+if ($tokenRange !== 0 && !isAllowed($token, $allowedTokens, $tokenRange, (bool)$live)) {
+    $accessDenied = true;
+    $denyMessage = '访问被拒绝：无效Token。';
 }
 
 // 验证 User-Agent
