@@ -1,3 +1,12 @@
+## 2025-09-15
+1. ✨**新增**：新增 EPG 源、直播源「禁用/启用」按钮
+2. ⚡**优化**：代理访问时，对 token 及播放地址进行加密
+3. ⚡**优化**：重写定时任务，避免重启后异常（#120）
+4. ⚡**优化**：初次使用时提示设置密码
+5. ⚡**优化**：初次使用时弹出「使用说明」
+6. ⚡**优化**：移动端布局
+7. ⚡**优化**：一键部署脚本
+
 ## 2025-09-10
 1. ✨**新增**：一键部署脚本
 
@@ -131,7 +140,7 @@
 9. ⚡**优化**：移除 DIYP、超级直播接口的 `source` 字段
 10. ⚡**优化**：部分页面样式、页面标题
 11. ⚡**优化**：使用说明
-12. ⚡**优化**：[捐赠入口](https://gitee.com/taksssss/iptv-tool#-buy-me-a-coffee)
+12. ⚡**优化**：[打赏入口](https://gitee.com/taksssss/iptv-tool#-buy-me-a-coffee)
 
 ## 2025-05-13
 
@@ -196,8 +205,8 @@
 3. ✨**新增**：测速校验时设置最低分辨率
 4. ✨**新增**：测速校验时设置单个频道接口数量
 5. ✨**新增**：测速校验后按响应速度排序
-6. ✨**新增**：[捐赠入口](https://gitee.com/taksssss/iptv-tool#-buy-me-a-coffee)
-7. ✨**新增**：[捐赠鸣谢列表](https://gitee.com/taksssss/iptv-tool/blob/main/DONATIONS.md)
+6. ✨**新增**：[打赏入口](https://gitee.com/taksssss/iptv-tool#-buy-me-a-coffee)
+7. ✨**新增**：[打赏鸣谢列表](https://gitee.com/taksssss/iptv-tool/blob/main/DONATIONS.md)
 8. ⚡**优化**：[安装、更新指令](https://gitee.com/taksssss/iptv-tool#-%E9%83%A8%E7%BD%B2%E6%AD%A5%E9%AA%A4)（建议都用新的指令，下次升级不需要导入数据。本次需要！）
 9. ⚡**优化**：CCTV5+ 匹配逻辑，避免误伤其他频道
 10. ⚡**优化**：保存台标时清理 Memcached ，避免缓存影响
