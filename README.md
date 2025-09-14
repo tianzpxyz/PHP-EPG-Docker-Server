@@ -144,7 +144,7 @@ bash <(curl -Ls https://gcore.jsdelivr.net/gh/taksssss/iptv-tool@master/install.
   />
 </picture>
 
-[查看捐赠者名单](/DONATIONS.md)
+[查看打赏列表](/DONATIONS.md)
 
 ## ⭐ Star History
 
