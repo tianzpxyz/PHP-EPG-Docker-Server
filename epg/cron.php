@@ -67,11 +67,6 @@ for ($t = $start_sec; $t <= $end_sec; $t += $interval_time) {
     ];
 }
 
-// 先排序 execution_times（按秒数）
-usort($execution_times, function($a, $b) {
-    return ($a['h']*3600 + $a['m']*60) - ($b['h']*3600 + $b['m']*60);
-});
-
 // 输出执行时间表日志
 logCronMessage("【开始时间】 " . $start_time);
 logCronMessage("【结束时间】 " . $end_time);
@@ -81,18 +76,25 @@ foreach ($execution_times as $t) $logContent .= "\t\t\t\t\t      " . sprintf('%0
 $logContent .= "\t\t\t\t--------------------------";
 logCronMessage($logContent);
 
+// 先排序 execution_times（按秒数）
+usort($execution_times, function($a, $b) {
+    return ($a['h']*3600 + $a['m']*60) - ($b['h']*3600 + $b['m']*60);
+});
+
 // 计算下次执行时间
 $now_sec = date('G')*3600 + date('i')*60;
-$next_execution_time = null;
 foreach ($execution_times as $t) {
-    $t_sec = $t['h']*3600 + $t['m']*60;
-    if ($t_sec > $now_sec) {
+    if ($t['h']*3600 + $t['m']*60 > $now_sec) {
         $next_execution_time = $t;
+        $next_date = date('m/d'); // 今天
         break;
     }
 }
-if (!$next_execution_time) $next_execution_time = $execution_times[0]; // 没找到就用第一个
-logCronMessage("【下次执行】 " . sprintf('%02d:%02d', $next_execution_time['h'], $next_execution_time['m']));
+if (!isset($next_execution_time)) { // 没找到就用第一个（明天执行）
+    $next_execution_time = $execution_times[0];
+    $next_date = date('m/d', strtotime('+1 day'));
+}
+logCronMessage("【下次执行】 " . $next_date . ' ' . sprintf('%02d:%02d', $next_execution_time['h'], $next_execution_time['m']));
 
 // 无限循环，每分钟检查
 while (true) {
@@ -102,17 +104,18 @@ while (true) {
         $t_sec = $t['h']*3600 + $t['m']*60;
         if ($now_sec >= $t_sec && $now_sec < $t_sec + 60) { // 踩点
             exec('php ' . __DIR__ . '/update.php &');
-            logCronMessage("【成功执行】 update.php");
+            static $check_counter = 0;
+            logCronMessage("【成功执行】 update.php (" . ++$check_counter . ")");
 
             // 下次执行时间
-            $next_execution_time = $execution_times[($idx+1) % count($execution_times)];
-            logCronMessage("【下次执行】 " . sprintf('%02d:%02d', $next_execution_time['h'], $next_execution_time['m']));
+            $next_idx = ($idx + 1) % count($execution_times);
+            $next_execution_time = $execution_times[$next_idx];
+            $next_date = ($next_idx <= $idx) ? date('m/d', strtotime('+1 day')) : date('m/d');
+            logCronMessage("【下次执行】 " . $next_date . ' ' . sprintf('%02d:%02d', $next_execution_time['h'], $next_execution_time['m']));
 
             // 同步测速校验
             $Config = json_decode(@file_get_contents(__DIR__ . '/data/config.json'), true);
             $check_interval_factor = $Config['check_speed_interval_factor'] ?? 1;
-            static $check_counter = 0;
-            $check_counter++;
             if (($Config['check_speed_auto_sync'] ?? false) && ($check_counter % $check_interval_factor === 0)) {
                 exec('php ' . __DIR__ . '/check.php backgroundMode=1 > /dev/null 2>/dev/null &');
                 logCronMessage("【测速校验】 已在后台运行 (" . ($check_counter / $check_interval_factor) . ")");
