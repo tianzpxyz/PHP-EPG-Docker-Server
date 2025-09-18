@@ -59,6 +59,7 @@ Memcached：已移除相关设置，默认打开，缓存在更新数据时清�
 `URL #FT=频道名1, 分组2, 直播地址3`（白名单，模糊匹配）  
 `URL #FT=!频道名1, 分组2, 直播地址3`（黑名单，模糊匹配）  
 `URL #EXTVLCOPT={"http-user-agent":"xxx","http-referrer":"xxx"}`（在直播地址前加入额外信息）  
+`URL #PROXY=1/0`（强制开启/关闭代理）  
 选项对照表（任选其一即可）：`PF/prefix, UA/useragent, RP/replace, FT/filter`  
 多参数：`URL #PF=分组前缀 #UA=自定义UA`  
 在生成 m3u 文件时，「台标地址」、「tvg-id」、「tvg-name」字段可选  
