@@ -429,9 +429,9 @@ try {
                     SELECT 
                         c.*, 
                         REPLACE(ci.resolution, 'x', '<br>x<br>') AS resolution,
-                        CASE 
-                            WHEN ci.speed GLOB '[0-9]*' THEN ci.speed || '<br>ms'
-                            ELSE ci.speed
+                        CASE WHEN " . ($is_sqlite ? "ci.speed GLOB '[0-9]*'" : "ci.speed REGEXP '^[0-9]+$'") . " 
+                            THEN " . ($is_sqlite ? "ci.speed || '<br>ms'" : "CONCAT(ci.speed, '<br>ms')") . " 
+                            ELSE ci.speed 
                         END AS speed
                     FROM channels c
                     LEFT JOIN channels_info ci ON c.streamUrl = ci.streamUrl
