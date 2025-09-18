@@ -197,11 +197,6 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
         return preg_replace('#"(/data/icon/.*)#', '"' . $serverUrl . '$1', $cached_data);
     }
 
-    // 获取数据库类型（mysql 或 sqlite）
-    $concat = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql'
-        ? "CONCAT('%', channel, '%')"
-        : "'%' || channel || '%'";
-
     // 优先精准匹配，其次正向模糊匹配，最后反向模糊匹配
     $stmt = $db->prepare("
         SELECT epg_diyp
@@ -209,7 +204,7 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
         WHERE (
             (channel = :channel
             OR channel LIKE :like_channel
-            OR :channel LIKE $concat)
+            OR INSTR(:channel, channel) > 0)
             AND date = :date
         )
         ORDER BY
@@ -336,17 +331,29 @@ function liveFetchHandler($query_params) {
     if (!empty($query_params['proxy'])) {
         if ($query_params['type'] === 'm3u') {
             $content = preg_replace_callback('/^(?!#)(.+)$/m', function ($matches) use ($Config, $serverUrl) {
-                $encUrl = urlencode(encryptUrl(trim($matches[1]), $Config['token']));
-                return $serverUrl . '/proxy.php?url=' . $encUrl;
+                $line = trim($matches[1]);
+                if (substr($line, -8) === '#NOPROXY') {
+                    return $line;
+                } else {
+                    $encUrl = urlencode(encryptUrl($line, $Config['token']));
+                    return $serverUrl . '/proxy.php?url=' . $encUrl;
+                }
             }, $content);
-    
         } elseif ($query_params['type'] === 'txt') {
             $content = preg_replace_callback('/^([^,#]+),(?!#)(.+)$/m', function ($matches) use ($Config, $serverUrl) {
-                $encUrl = urlencode(encryptUrl(trim($matches[2]), $Config['token']));
-                return $matches[1] . ',' . $serverUrl . '/proxy.php?url=' . $encUrl;
+                $url = trim($matches[2]);
+                if (substr($url, -8) === '#NOPROXY') {
+                    return $matches[0];
+                } else {
+                    $encUrl = urlencode(encryptUrl($url, $Config['token']));
+                    return $matches[1] . ',' . $serverUrl . '/proxy.php?url=' . $encUrl;
+                }
             }, $content);
         }
     }
+
+    // 统一处理代理/非代理 URL 标记
+    $content = str_replace(['#PROXY=', '#NOPROXY'], [$serverUrl . '/proxy.php?url=', ''], $content);
 
     echo $content;
     exit;
