@@ -1,5 +1,14 @@
 // 页面加载时预加载数据，减少等待时间
 document.addEventListener('DOMContentLoaded', function() {
+    // 新用户弹出使用说明
+    if ((!document.getElementById('xml_urls')?.value.trim()) &&
+        document.getElementById('start_time').value === '00:00' &&
+        document.getElementById('end_time').value === '23:59' &&
+        document.getElementById('interval_hour').value === '6' &&
+        document.getElementById('interval_minute').value === '0') {
+        showHelpModal();
+    }
+
     showModal('live', popup = false);
     showModal('channel', popup = false);
     showModal('update', popup = false);
@@ -140,6 +149,23 @@ function handleKeydown(event) {
         // 恢复光标位置
         textarea.setSelectionRange(newSelectionStart, newSelectionEnd);
     }
+}
+
+// 禁用/启用所有源
+function commentAll(id) {
+    const textarea = document.getElementById(id);
+    const lines = textarea.value.split('\n');
+    const allCommented = lines.every(line => line.trim().startsWith('#'));
+    const newLines = lines.map(line => {
+        return allCommented ? line.replace(/^#\s*/, '') : '# ' + line;
+    });
+    textarea.value = newLines.join('\n');
+}
+
+// 调整移动端布局
+if (/Mobi|Android|iPhone/i.test(navigator.userAgent)) {
+    document.getElementById('xml_urls').style.minHeight = '350px';
+    document.getElementById('sourceUrlTextarea').style.minHeight = '300px';
 }
 
 // 格式化时间
@@ -346,7 +372,7 @@ function showHelpModal() {
         });
 }
 
-// 显示捐赠图片
+// 显示打赏图片
 function showDonationImage() {
     const isDark = document.body.classList.contains('dark');
     const img = isDark ? 'assets/img/buymeacofee-dark.png' : 'assets/img/buymeacofee.png';
@@ -1235,6 +1261,7 @@ async function showLiveUrl() {
 
         const serverUrl  = serverData.server_url;
         const token      = configData.token;
+        const tokenMd5   = configData.token_md5;
         const tokenRange = parseInt(configData.token_range, 10);
         const modRewrite = serverData.mod_rewrite ? true : false;
 
@@ -1258,8 +1285,17 @@ async function showLiveUrl() {
         const m3uUrl = buildUrl(serverUrl, m3uPath, query);
         const txtUrl = buildUrl(serverUrl, txtPath, query);
         
-        const proxyM3uUrl = buildUrl(m3uUrl, '', 'proxy=1');
-        const proxyTxtUrl = buildUrl(txtUrl, '', 'proxy=1');
+        function buildProxyUrl(originalUrl, tokenMd5) {
+            const url = new URL(originalUrl, location.origin);
+            if (tokenRange === 1 || tokenRange === 3) {
+                url.searchParams.set('token', tokenMd5);
+            }
+            url.searchParams.set('proxy', '1');
+            return url.toString();
+        }
+        
+        const proxyM3uUrl = buildProxyUrl(m3uUrl, tokenMd5);
+        const proxyTxtUrl = buildProxyUrl(txtUrl, tokenMd5);
         
         const message =
             `M3U：<br><a href="${m3uUrl}" target="_blank">${m3uUrl}</a>&ensp;<a href="${m3uUrl}" download="tv.m3u">下载</a><br>` +

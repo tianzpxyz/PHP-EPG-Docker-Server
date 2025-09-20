@@ -61,6 +61,7 @@ function initialDB() {
     global $is_sqlite;
 
     $typeText = $is_sqlite ? 'TEXT' : 'VARCHAR(255)';
+    $typeTextLong = $is_sqlite ? 'TEXT' : 'VARCHAR(1024)';
     $typeIntAuto = $is_sqlite ? 'INTEGER PRIMARY KEY AUTOINCREMENT' : 'INT PRIMARY KEY AUTO_INCREMENT';
     $typeTime = $is_sqlite ? 'DATETIME DEFAULT CURRENT_TIMESTAMP' : 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
 
@@ -68,7 +69,7 @@ function initialDB() {
         "CREATE TABLE IF NOT EXISTS epg_data (
             date $typeText NOT NULL,
             channel $typeText NOT NULL,
-            epg_diyp $typeText,
+            epg_diyp $typeTextLong,
             PRIMARY KEY (date, channel)
         )",
         "CREATE TABLE IF NOT EXISTS gen_list (
@@ -90,7 +91,7 @@ function initialDB() {
             groupTitle $typeText,
             channelName $typeText,
             chsChannelName $typeText,
-            streamUrl $typeText,
+            streamUrl $typeTextLong,
             iconUrl $typeText,
             tvgId $typeText,
             tvgName $typeText,
@@ -101,7 +102,7 @@ function initialDB() {
             config $typeText
         )",
         "CREATE TABLE IF NOT EXISTS channels_info (
-            streamUrl $typeText PRIMARY KEY,
+            streamUrl $typeTextLong PRIMARY KEY,
             resolution $typeText,
             speed $typeText
         )",
@@ -116,6 +117,7 @@ function initialDB() {
             deny_message TEXT
         )"
     ];
+
     foreach ($tables as $sql) $db->exec($sql);
 
     // channels 表处理
@@ -133,7 +135,7 @@ function initialDB() {
             groupTitle $typeText,
             channelName $typeText,
             chsChannelName $typeText,
-            streamUrl $typeText,
+            streamUrl $typeTextLong,
             iconUrl $typeText,
             tvgId $typeText,
             tvgName $typeText,
@@ -414,10 +416,10 @@ function getExistingData() {
 // 频道数据模糊匹配函数
 function dbChannelNameMatch($channelName) {
     global $db;
-    $concat = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? "CONCAT('%', channel, '%')" : "'%' || channel || '%'";
     $stmt = $db->prepare("
-        SELECT channel FROM epg_data WHERE (channel = :channel OR channel LIKE :like_channel OR :channel LIKE $concat)
-        ORDER BY CASE WHEN channel = :channel THEN 1 WHEN channel LIKE :like_channel THEN 2 ELSE 3 END, LENGTH(channel) DESC
+        SELECT channel FROM epg_data WHERE (channel = :channel OR channel LIKE :like_channel OR INSTR(:channel, channel) > 0)
+        ORDER BY CASE WHEN channel = :channel THEN 1 WHEN channel LIKE :like_channel THEN 2 ELSE 3 END,
+        CASE WHEN channel = :channel THEN NULL WHEN channel LIKE :like_channel THEN LENGTH(channel) ELSE -LENGTH(channel) END
         LIMIT 1
     ");
     $stmt->execute([':channel' => $channelName, ':like_channel' => $channelName . '%']);
@@ -468,38 +470,61 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
         $url = trim(str_replace('\#', '#', $parts[0]));
 
         // 初始化
-        $groupPrefix = $userAgent = $replacePattern = $extvlcoptPattern = '';
+        $groupPrefix = $userAgent = $replacePattern = $extvlcoptPattern = $proxy = '';
         $white_list = $black_list = [];
 
         foreach ($parts as $i => $part) {
             if ($i === 0) continue; // 跳过 URL 部分
-            $part = str_replace('\#', '#', ltrim($part)); // 还原 #
+            $part = str_replace('\#', '#', ltrim($part));
+        
+            $eqPos = strpos($part, '=');
+            if ($eqPos === false) continue;
+        
+            $key   = strtolower(trim(substr($part, 0, $eqPos)));
+            $value = substr($part, $eqPos + 1);
+        
+            switch ($key) {
+                case 'pf':
+                case 'prefix':
+                    $groupPrefix = ltrim($value); // 保留右侧空格
+                    break;
 
-            if (stripos($part, 'PF=') === 0 || stripos($part, 'prefix=') === 0) {
-                $groupPrefix = substr($part, strpos($part, '=') + 1);
-            } elseif (stripos($part, 'UA=') === 0 || stripos($part, 'useragent=') === 0) {
-                $userAgent = trim(substr($part, strpos($part, '=') + 1));
-            } elseif (stripos($part, 'RP=') === 0 || stripos($part, 'replace=') === 0) {
-                $replacePattern = trim(substr($part, strpos($part, '=') + 1));
-            } elseif (stripos($part, 'FT=') === 0 || stripos($part, 'filter=') === 0) {
-                $filter_raw = strtoupper(t2s(trim(substr($part, strpos($part, '=') + 1))));
-                $list = array_map('trim', explode(',', ltrim($filter_raw, '!')));
-                if (strpos($filter_raw, '!') === 0) {
-                    $black_list = $list;
-                } else {
-                    $white_list = $list;
-                }
-            } elseif (stripos($part, 'EXTVLCOPT=') === 0) {
-                $opts = trim(substr($part, strpos($part, '=') + 1));
-                $jsonOpts = json_decode($opts, true);
-                if (json_last_error() === JSON_ERROR_NONE && is_array($jsonOpts)) {
-                    foreach ($jsonOpts as $key => $value) {
-                        $extvlcoptPattern .= "#EXTVLCOPT:" . $key . "=" . $value . "\n";
+                case 'ua':
+                case 'useragent':
+                    $userAgent = trim($value);
+                    break;
+
+                case 'rp':
+                case 'replace':
+                    $replacePattern = trim($value);
+                    break;
+
+                case 'ft':
+                case 'filter':
+                    $filter_raw = strtoupper(t2s(trim($value)));
+                    $list = array_map('trim', explode(',', ltrim($filter_raw, '!')));
+                    if (strpos($filter_raw, '!') === 0) {
+                        $black_list = $list;
+                    } else {
+                        $white_list = $list;
                     }
-                }
+                    break;
+
+                case 'extvlcopt':
+                    $jsonOpts = json_decode($value, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($jsonOpts)) {
+                        foreach ($jsonOpts as $k => $v) {
+                            $extvlcoptPattern .= "#EXTVLCOPT:" . $k . "=" . $v . "\n";
+                        }
+                    }
+                    break;
+                    
+                case 'proxy':
+                    $proxy = (int)trim($value);
+                    break;
             }
         }
-
+        
         // 获取 URL 内容
         $error = '';
         $urlContent = '';
@@ -591,10 +616,15 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                             $j++;
                         }
 
-                        // 添加真正的 URL
-                        $streamUrl .= strtok(trim($urlContentLines[$j] ?? ''), '\\');
-
-                        $tag = md5($url . $groupTitle . $originalChannelName . $streamUrl);
+                        // 添加真正的 URL，考虑 PROXY 选项
+                        $rawUrl = strtok(trim($urlContentLines[$j] ?? ''), '\\');
+                        if ($proxy === 1) {
+                            $encUrl = urlencode(encryptUrl($rawUrl, $Config['token']));
+                            $streamUrl .= "#PROXY=" . $encUrl;
+                        } else {
+                            $streamUrl .= $rawUrl . ($proxy === 0 ? "#NOPROXY" : "");
+                        }
+                        $tag = md5($url . $groupTitle . $originalChannelName . $rawUrl);
 
                         $rowData = [
                             'groupPrefix' => $groupPrefix,
@@ -630,8 +660,14 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                     }
             
                     $originalChannelName = trim($parts[0]);
-                    $streamUrl = trim($parts[1]) . (isset($parts[2]) && $parts[2] === '' ? ',' : ''); // 最后一个 , 后为空，则视为 URL 一部分
-                    $tag = md5($url . $groupTitle . $originalChannelName . $streamUrl);
+                    $rawUrl = trim($parts[1]) . (isset($parts[2]) && $parts[2] === '' ? ',' : ''); // 最后一个 , 后为空，则视为 URL 一部分
+                    if ($proxy == 1) {
+                        $encUrl = urlencode(encryptUrl($rawUrl, $Config['token']));
+                        $streamUrl = "#PROXY=" . $encUrl;
+                    } else {
+                        $streamUrl = $rawUrl . ($proxy == 0 ? "#NOPROXY" : "");
+                    }
+                    $tag = md5($url . $groupTitle . $originalChannelName . $rawUrl);
 
                     $rowData = [
                         'groupPrefix' => $groupPrefix,
@@ -730,13 +766,12 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
     $templateExist = $templateContent !== '';
     
     $m3uContent = "#EXTM3U x-tvg-url=\"\"\n";
-    $groups = [];
+    $gen_live_update_time = $Config['gen_live_update_time'] ?? false;
+    $updateTime = date('Y-m-d H:i:s');
 
     // 生成更新时间
-    if ($Config['gen_live_update_time'] ?? false) {
-        $updateTime = date('Y-m-d H:i:s');
+    if ($gen_live_update_time) {
         $m3uContent .= "#EXTINF:-1 group-title=\"更新时间\"," . $updateTime . "\nnull\n";
-        $groups['更新时间'][] = "$updateTime,null";
     }
 
     $liveTvgIdEnable = $Config['live_tvg_id_enable'] ?? 1;
@@ -872,6 +907,15 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
     $sourcePrefixMap = [];
     $unnamedCounter = 1;
 
+    // 生成更新时间
+    if ($gen_live_update_time) {
+        if ($ku9SecondaryGrouping) {
+            $groupedData['更新时间']['更新时间'][] = "$updateTime,null";
+        } else {
+            $groupedData['更新时间'][] = "$updateTime,null";
+        }
+    }
+
     foreach ($channelData as $row) {
         if (!empty($row['disable'])) continue;
 
@@ -994,5 +1038,19 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
     // 保存 M3U / TXT 文件
     file_put_contents("{$liveDir}{$fileName}.m3u", $m3uContent);
     file_put_contents("{$liveDir}{$fileName}.txt", $txtContent);
+}
+
+// 加密 URL
+function encryptUrl($url, $token) {
+    $key = substr(hash('sha256', $token), 0, 32);
+    $iv  = substr(hash('md5', $token), 0, 16);
+    return base64_encode(openssl_encrypt($url, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv));
+}
+
+// 解密 URL
+function decryptUrl($enc, $token) {
+    $key = substr(hash('sha256', $token), 0, 32);
+    $iv  = substr(hash('md5', $token), 0, 16);
+    return openssl_decrypt(base64_decode($enc), 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
 }
 ?>

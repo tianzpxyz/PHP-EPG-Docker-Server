@@ -3,99 +3,132 @@
  * @file proxy.php
  * @brief IPTV 流媒体代理脚本
  *
- * 该脚本根据传入的 token 和 url 参数，对 IPTV 流媒体请求进行代理转发。
- *
  * 作者: Tak
  * GitHub: https://github.com/taksssss/iptv-tool
  */
 
 require_once 'public.php';
 
-$token = $_GET['token'] ?? '';
-$url   = $_GET['url']   ?? '';
-
-// 校验 token
-if ($token !== $Config['proxy_token'] || !$url) {
+// 获取加密后的 URL
+$encUrl = $_GET['url'] ?? '';
+if (!$encUrl) {
     http_response_code(403);
-    exit('Forbidden');
+    exit('Forbidden: Missing URL');
 }
 
+// 解密 URL
+$url = decryptUrl($encUrl, $Config['token']);
+if ($url === false) {
+    http_response_code(403);
+    exit('Forbidden: Invalid URL');
+}
+
+// 检查 #NOPROXY 标记并移除
+$nop = false;
+if (substr($url, -8) === '#NOPROXY') {
+    $nop = true;
+    $url = substr($url, 0, -8);
+}
+
+// 如果是 NOPROXY，直接跳转
+if ($nop) {
+    header("Location: $url");
+    exit;
+}
+
+// 清理缓冲
+while (ob_get_level()) ob_end_clean();
 set_time_limit(0);
-if (ob_get_level()) ob_end_clean();
 
-// 判断是否为 M3U8 文件
-$isM3U8 = stripos($url, '.m3u8') !== false;
-
-// 设置输出类型
-header('Content-Type: ' . ($isM3U8 ? 'application/vnd.apple.mpegurl' : 'video/MP2T'));
-
-// 收集客户端请求头
+// 收集客户端请求头（去掉 Host 和 Accept-Encoding）
 $clientHeaders = [];
 foreach (getallheaders() as $key => $value) {
-    // 跳过 Host，避免覆盖目标站
-    if (strtolower($key) === 'host') continue;
+    $lower = strtolower($key);
+    if ($lower === 'host' || $lower === 'accept-encoding') continue;
     $clientHeaders[] = "$key: $value";
 }
 
 // 初始化请求
 $ch = curl_init($url);
+$isM3U8 = (stripos($url, '.m3u8') !== false);
+$buffer = '';
+$contentType = null;
+
 curl_setopt_array($ch, [
-    CURLOPT_FOLLOWLOCATION => true,   // 跟随重定向
-    CURLOPT_RETURNTRANSFER => $isM3U8, // M3U8 需要一次性取回
-    CURLOPT_SSL_VERIFYPEER => false,  // 忽略证书验证
+    CURLOPT_FOLLOWLOCATION => true,
+    CURLOPT_SSL_VERIFYPEER => false,
     CURLOPT_SSL_VERIFYHOST => false,
-    CURLOPT_HTTPHEADER     => $clientHeaders, // 透传请求头
-    CURLOPT_TIMEOUT        => 0,
+    CURLOPT_HTTPHEADER     => $clientHeaders,
+    CURLOPT_CONNECTTIMEOUT => 10, // 连接超时
+    CURLOPT_TIMEOUT        => 0,  // 数据流不超时
 ]);
 
-if ($isM3U8) {
-    // 拉取并处理 M3U8
-    $data = curl_exec($ch);
-
-    if ($data === false) {
-        http_response_code(502);
-        curl_close($ch);
-        exit('Bad Gateway');
-    }
-
-    // 获取最终有效地址（考虑重定向）
-    $finalUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
-    curl_close($ch);
-
-    // 计算基础路径（M3U8 所在目录）
-    $base = preg_replace('/\/[^\/]*$/', '/', $finalUrl);
-    $proxy = '/proxy.php?token=' . urlencode($token) . '&url=';
-
-    // 替换 M3U8 中的 TS / 子 M3U8 地址为代理地址
-    echo preg_replace_callback(
-        '/^(?!#)(.+\.(ts|m3u8).*?)$/mi',
-        function ($m) use ($base, $proxy) {
-            $link = trim($m[1]);
-            // 如果是相对路径，补全为绝对 URL
-            if (!preg_match('/^[a-zA-Z]+:\/\//', $link)) {
-                $link = $base . $link;
-            }
-            return $proxy . urlencode($link);
-        },
-        $data
-    );
-} else {
-    // TS/其他流：实时透传，同时保留源站响应头
-    curl_setopt($ch, CURLOPT_HEADERFUNCTION, function ($ch, $header) {
-        $len = strlen($header);
-        $header = trim($header);
-        if ($header && stripos($header, 'Transfer-Encoding') === false) {
-            header($header, false);
+// 响应头处理，动态识别 m3u8
+curl_setopt($ch, CURLOPT_HEADERFUNCTION, function ($ch, $header) use (&$isM3U8, &$contentType) {
+    if (stripos($header, 'Content-Type:') === 0) {
+        $contentType = trim(substr($header, 13));
+        if (stripos($contentType, 'mpegurl') !== false) {
+            $isM3U8 = true;
         }
-        return $len;
-    });
+    }
+    // 保留源站响应头（跳过 Transfer-Encoding）
+    $h = trim($header);
+    if ($h && stripos($h, 'Transfer-Encoding') === false) {
+        header($h, false);
+    }
+    return strlen($header);
+});
 
-    curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($c, $data) {
-        echo $data;
+// 响应体处理
+curl_setopt($ch, CURLOPT_WRITEFUNCTION, function ($c, $data) use (&$buffer, &$isM3U8) {
+    if ($isM3U8) {
+        $buffer .= $data; // 累积 m3u8
+    } else {
+        echo $data; // TS 或其他流实时透传
         flush();
-        return strlen($data);
-    });
+    }
+    return strlen($data);
+});
 
-    curl_exec($ch);
+// 执行请求
+$ok = curl_exec($ch);
+
+if ($ok === false) {
+    http_response_code(502);
+    $err = curl_error($ch);
     curl_close($ch);
+    exit("Bad Gateway: $err");
 }
+
+// 获取最终有效地址（考虑重定向）
+$finalUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+curl_close($ch);
+
+// 如果不是 m3u8，TS 已透传，结束
+if (!$isM3U8) {
+    exit;
+}
+
+// 处理 M3U8
+header('Content-Type: application/vnd.apple.mpegurl');
+
+// 计算基础路径
+$base = preg_replace('/\/[^\/]*$/', '/', $finalUrl);
+
+// 自动生成代理路径
+$proxy = $_SERVER['PHP_SELF'] . '?url=';
+
+// 替换 m3u8 中的资源地址
+echo preg_replace_callback(
+    '/^(?!#)(.+)$/mi',
+    function ($m) use ($base, $proxy, $Config) {
+        $link = trim($m[1]);
+        if ($link === '') return $m[0];
+        if (!preg_match('/^[a-zA-Z]+:\/\//', $link)) {
+            $link = $base . $link;
+        }
+        $encLink = encryptUrl($link, $Config['token']);
+        return $proxy . urlencode($encLink);
+    },
+    $buffer
+);

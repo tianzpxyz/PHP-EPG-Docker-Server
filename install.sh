@@ -44,18 +44,12 @@ install_docker() {
     if ! command -v docker >/dev/null 2>&1; then
         echo -e "${YELLOW}未检测到 Docker，开始安装...${RESET}"
 
-        if [ -f /etc/debian_version ]; then
-            $SUDO_CMD apt-get update
-            $SUDO_CMD apt-get install -y docker.io
-        elif [ -f /etc/redhat-release ]; then
-            $SUDO_CMD yum install -y docker
-        else
-            echo -e "${RED}未知系统，请手动安装 Docker${RESET}"
-            exit 1
-        fi
+        # 使用 Docker 官方安装脚本 + 阿里云源
+        curl -fsSL https://get.docker.com | $SUDO_CMD bash -s docker --mirror Aliyun
 
         $SUDO_CMD systemctl enable docker
         $SUDO_CMD systemctl start docker
+
         echo -e "${GREEN}Docker 安装完成${RESET}"
     fi
 }

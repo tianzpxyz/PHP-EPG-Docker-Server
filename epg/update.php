@@ -575,34 +575,50 @@ foreach ($Config['xml_urls'] as $xml_url) {
     // 更新 XML 数据
     $xml_parts = explode('#', $xml_url);
     $cleaned_url = trim($xml_parts[0]);
-    $userAgent = '';
-    $white_list = $black_list = [];
-    $time_offset = '';
-    $replacePattern = '';
-    
     logMessage($log_messages, "【地址】 $cleaned_url");
+    
+    $userAgent = $time_offset = $replacePattern = '';
+    $white_list = $black_list = [];
 
     foreach ($xml_parts as $part) {
         $part = trim($part);
-        if (stripos($part, 'UA=') === 0 || stripos($part, 'useragent=') === 0) {
-            $userAgent = substr($part, strpos($part, '=') + 1);
-            logMessage($log_messages, "【自定】 UA：$userAgent");
-        } elseif (stripos($part, 'FT=') === 0 || stripos($part, 'filter=') === 0) {
-            $filter_raw = strtoupper(t2s(trim(substr($part, strpos($part, '=') + 1))));
-            $list = array_map('trim', explode(',', ltrim($filter_raw, '!')));
-            if (strpos($filter_raw, '!') === 0) {
-                $black_list = $list;
-                logMessage($log_messages, "【临时】 屏蔽频道：" . implode(", ", $black_list));
-            } else {
-                $white_list = $list;
-                logMessage($log_messages, "【临时】 限定频道：" . implode(", ", $white_list));
-            }
-        } elseif (stripos($part, 'TO=') === 0 || stripos($part, 'timeoffset=') === 0) {
-            $time_offset = substr($part, strpos($part, '=') + 1);
-            logMessage($log_messages, "【修正】 时间偏移：$time_offset");
-        } elseif (stripos($part, 'RP=') === 0 || stripos($part, 'replace=') === 0) {
-            $replacePattern = trim(substr($part, strpos($part, '=') + 1));
-            logMessage($log_messages, "【替换】 $replacePattern");
+        if (strpos($part, '=') === false) continue;
+    
+        [$key, $value] = explode('=', $part, 2);
+        $key = strtolower(trim($key));
+        $value = trim($value);
+    
+        switch ($key) {
+            case 'ua':
+            case 'useragent':
+                $userAgent = $value;
+                logMessage($log_messages, "【自定】 UA：$userAgent");
+                break;
+    
+            case 'ft':
+            case 'filter':
+                $filter_raw = strtoupper(t2s($value));
+                $list = array_map('trim', explode(',', ltrim($filter_raw, '!')));
+                if ($filter_raw[0] === '!') {
+                    $black_list = $list;
+                    logMessage($log_messages, "【临时】 屏蔽频道：" . implode(", ", $black_list));
+                } else {
+                    $white_list = $list;
+                    logMessage($log_messages, "【临时】 限定频道：" . implode(", ", $white_list));
+                }
+                break;
+    
+            case 'to':
+            case 'timeoffset':
+                $time_offset = $value;
+                logMessage($log_messages, "【修正】 时间偏移：$time_offset");
+                break;
+    
+            case 'rp':
+            case 'replace':
+                $replacePattern = $value;
+                logMessage($log_messages, "【替换】 $replacePattern");
+                break;
         }
     }
     

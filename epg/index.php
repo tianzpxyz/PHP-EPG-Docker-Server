@@ -37,14 +37,22 @@ $userAgentRange = $Config['user_agent_range'] ?? 0;
 $live = in_array($query_params['type'] ?? '', ['m3u', 'txt']);
 $accessDenied = false;
 
-// 验证token
-if ($tokenRange !== 0) {
-    $allowedTokens = array_map('trim', explode(PHP_EOL, $Config['token'] ?? ''));
-    $token = $query_params['token'] ?? '';
-    if (!isAllowed($token, $allowedTokens, $tokenRange, (bool)$live)) {
-        $accessDenied = true;
-        $denyMessage = '访问被拒绝：无效Token。';
+// 验证 token
+$token = $query_params['token'] ?? '';
+$rawTokens = array_map('trim', explode(PHP_EOL, $Config['token'] ?? ''));
+
+// 生成允许的 token 列表
+$allowedTokens = $rawTokens;
+if (!empty($query_params['proxy'])) {
+    foreach ($rawTokens as $t) {
+        $allowedTokens[] = substr(md5($t), 0, 8);
     }
+}
+
+// 验证 token
+if ($tokenRange !== 0 && !isAllowed($token, $allowedTokens, $tokenRange, (bool)$live)) {
+    $accessDenied = true;
+    $denyMessage = '访问被拒绝：无效Token。';
 }
 
 // 验证 User-Agent
@@ -189,11 +197,6 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
         return preg_replace('#"(/data/icon/.*)#', '"' . $serverUrl . '$1', $cached_data);
     }
 
-    // 获取数据库类型（mysql 或 sqlite）
-    $concat = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql'
-        ? "CONCAT('%', channel, '%')"
-        : "'%' || channel || '%'";
-
     // 优先精准匹配，其次正向模糊匹配，最后反向模糊匹配
     $stmt = $db->prepare("
         SELECT epg_diyp
@@ -201,7 +204,7 @@ function readEPGData($date, $oriChannelName, $cleanChannelName, $db, $type) {
         WHERE (
             (channel = :channel
             OR channel LIKE :like_channel
-            OR :channel LIKE $concat)
+            OR INSTR(:channel, channel) > 0)
             AND date = :date
         )
         ORDER BY
@@ -326,20 +329,21 @@ function liveFetchHandler($query_params) {
 
     // 如果启用代理模式
     if (!empty($query_params['proxy'])) {
-        $proxyPrefix = $serverUrl . '/proxy.php?token=' . urlencode($Config['proxy_token']) . '&url=';
-
         if ($query_params['type'] === 'm3u') {
-            // 匹配每一行 URL（不以 # 开头的行）
-            $content = preg_replace_callback('/^(?!#)(.+)$/m', function ($matches) use ($proxyPrefix) {
-                return $proxyPrefix . urlencode(trim($matches[1]));
+            $content = preg_replace_callback('/^(?!#)(.+)$/m', function ($matches) use ($Config, $serverUrl) {
+                $encUrl = urlencode(encryptUrl(trim($matches[1]), $Config['token']));
+                return $serverUrl . '/proxy.php?url=' . $encUrl;
             }, $content);
         } elseif ($query_params['type'] === 'txt') {
-            // 匹配频道行 "频道名,URL"
-            $content = preg_replace_callback('/^([^,#]+),(?!#)(.+)$/m', function ($matches) use ($proxyPrefix) {
-                return $matches[1] . ',' . $proxyPrefix . urlencode(trim($matches[2]));
+            $content = preg_replace_callback('/^([^,#]+),(?!#)(.+)$/m', function ($matches) use ($Config, $serverUrl) {
+                $encUrl = urlencode(encryptUrl(trim($matches[2]), $Config['token']));
+                return $matches[1] . ',' . $serverUrl . '/proxy.php?url=' . $encUrl;
             }, $content);
         }
     }
+
+    // 统一处理代理/非代理 URL 标记
+    $content = str_replace(['#PROXY=', '#NOPROXY'], [$serverUrl . '/proxy.php?url=', ''], $content);
 
     echo $content;
     exit;
