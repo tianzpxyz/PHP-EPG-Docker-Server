@@ -23,6 +23,19 @@ if ($url === false) {
     exit('Forbidden: Invalid URL');
 }
 
+// 检查 #NOPROXY 标记并移除
+$nop = false;
+if (substr($url, -8) === '#NOPROXY') {
+    $nop = true;
+    $url = substr($url, 0, -8);
+}
+
+// 如果是 NOPROXY，直接跳转
+if ($nop) {
+    header("Location: $url");
+    exit;
+}
+
 // 清理缓冲
 while (ob_get_level()) ob_end_clean();
 set_time_limit(0);
