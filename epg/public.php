@@ -61,6 +61,7 @@ function initialDB() {
     global $is_sqlite;
 
     $typeText = $is_sqlite ? 'TEXT' : 'VARCHAR(255)';
+    $typeTextLong = $is_sqlite ? 'TEXT' : 'VARCHAR(1024)';
     $typeIntAuto = $is_sqlite ? 'INTEGER PRIMARY KEY AUTOINCREMENT' : 'INT PRIMARY KEY AUTO_INCREMENT';
     $typeTime = $is_sqlite ? 'DATETIME DEFAULT CURRENT_TIMESTAMP' : 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
 
@@ -68,7 +69,7 @@ function initialDB() {
         "CREATE TABLE IF NOT EXISTS epg_data (
             date $typeText NOT NULL,
             channel $typeText NOT NULL,
-            epg_diyp $typeText,
+            epg_diyp $typeTextLong,
             PRIMARY KEY (date, channel)
         )",
         "CREATE TABLE IF NOT EXISTS gen_list (
@@ -90,7 +91,7 @@ function initialDB() {
             groupTitle $typeText,
             channelName $typeText,
             chsChannelName $typeText,
-            streamUrl $typeText,
+            streamUrl $typeTextLong,
             iconUrl $typeText,
             tvgId $typeText,
             tvgName $typeText,
@@ -101,7 +102,7 @@ function initialDB() {
             config $typeText
         )",
         "CREATE TABLE IF NOT EXISTS channels_info (
-            streamUrl $typeText PRIMARY KEY,
+            streamUrl $typeTextLong PRIMARY KEY,
             resolution $typeText,
             speed $typeText
         )",
@@ -116,6 +117,7 @@ function initialDB() {
             deny_message TEXT
         )"
     ];
+
     foreach ($tables as $sql) $db->exec($sql);
 
     // channels 表处理
@@ -133,7 +135,7 @@ function initialDB() {
             groupTitle $typeText,
             channelName $typeText,
             chsChannelName $typeText,
-            streamUrl $typeText,
+            streamUrl $typeTextLong,
             iconUrl $typeText,
             tvgId $typeText,
             tvgName $typeText,
@@ -518,7 +520,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                     break;
                     
                 case 'proxy':
-                    $proxy = trim($value);
+                    $proxy = (int)trim($value);
                     break;
             }
         }
@@ -616,11 +618,11 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
 
                         // 添加真正的 URL，考虑 PROXY 选项
                         $rawUrl = strtok(trim($urlContentLines[$j] ?? ''), '\\');
-                        if ($proxy == 1) {
+                        if ($proxy === 1) {
                             $encUrl = urlencode(encryptUrl($rawUrl, $Config['token']));
                             $streamUrl .= "#PROXY=" . $encUrl;
                         } else {
-                            $streamUrl .= $rawUrl . ($proxy == 0 ? "#NOPROXY" : "");
+                            $streamUrl .= $rawUrl . ($proxy === 0 ? "#NOPROXY" : "");
                         }
                         $tag = md5($url . $groupTitle . $originalChannelName . $rawUrl);
 
@@ -764,13 +766,12 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
     $templateExist = $templateContent !== '';
     
     $m3uContent = "#EXTM3U x-tvg-url=\"\"\n";
-    $groups = [];
+    $gen_live_update_time = $Config['gen_live_update_time'] ?? false;
+    $updateTime = date('Y-m-d H:i:s');
 
     // 生成更新时间
-    if ($Config['gen_live_update_time'] ?? false) {
-        $updateTime = date('Y-m-d H:i:s');
+    if ($gen_live_update_time) {
         $m3uContent .= "#EXTINF:-1 group-title=\"更新时间\"," . $updateTime . "\nnull\n";
-        $groups['更新时间'][] = "$updateTime,null";
     }
 
     $liveTvgIdEnable = $Config['live_tvg_id_enable'] ?? 1;
@@ -905,6 +906,15 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
     $groupHeaders = [];
     $sourcePrefixMap = [];
     $unnamedCounter = 1;
+
+    // 生成更新时间
+    if ($gen_live_update_time) {
+        if ($ku9SecondaryGrouping) {
+            $groupedData['更新时间']['更新时间'][] = "$updateTime,null";
+        } else {
+            $groupedData['更新时间'][] = "$updateTime,null";
+        }
+    }
 
     foreach ($channelData as $row) {
         if (!empty($row['disable'])) continue;
