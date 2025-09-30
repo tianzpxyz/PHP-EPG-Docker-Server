@@ -417,7 +417,7 @@ function getExistingData() {
 function dbChannelNameMatch($channelName, $dbChannels) {
     $channelName = trim($channelName);
     $bestMatch = null;
-    $bestScore = PHP_INT_MIN;
+    $bestScore = 0;
 
     foreach ($dbChannels as $dbChannel) {
         // 精确匹配，直接返回
