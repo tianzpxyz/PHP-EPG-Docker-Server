@@ -9,9 +9,6 @@
 `URL #FT=!频道名1, 频道ID2`（黑名单，精确匹配）  
 `URL #RP={"a1":"b1", "a2":"b2"}`（字符串替换）  
 选项对照表（任选其一即可）：`UA/useragent, TO/timeoffset, FT/filter, RP/replace`  
-tvmao示例：`tvmao, 频道id, [自定义:]频道id, ...`  
-cntv示例：`cntv[:n], 频道id, [自定义:]频道id, ...`  
-[] 表示可选（使用时不包含[]），`:n` 表示未来 n 天数据，缺省为 1  
 频道指定 EPG 源：设置后，频道数据仅通过指定源更新  
 优先级：xml 源越靠前，优先级越高；tvmao 跟 cntv 强制覆盖已有数据
 
@@ -58,7 +55,8 @@ Memcached：已移除相关设置，默认打开，缓存在更新数据时清�
 `URL #RP={"a1":"b1", "a2":"b2"}`（字符串替换，`\#` 代表 `#` ，`\n` 代表 `换行`）  
 `URL #FT=频道名1, 分组2, 直播地址3`（白名单，模糊匹配）  
 `URL #FT=!频道名1, 分组2, 直播地址3`（黑名单，模糊匹配）  
-`URL #EXTVLCOPT={"http-user-agent":"xxx","http-referrer":"xxx"}`（在直播地址前加入额外信息）  
+`URL #EXTVLCOPT={"http-user-agent":"xxx", "http-referrer":"xxx"}`（加入额外 `#EXTVLCOPT` 标签）  
+`URL #EXTINFOPT={"catchup":"xxx", "catchup-source":"xxx"}`（`#EXTINF` 标签加入额外信息）  
 `URL #PROXY=1/0`（强制开启/关闭代理）  
 选项对照表（任选其一即可）：`PF/prefix, UA/useragent, RP/replace, FT/filter`  
 多参数：`URL #PF=分组前缀 #UA=自定义UA`  
@@ -92,14 +90,18 @@ http://xxx.xx.m3u #RP={"rtp://":"http://192.168.1.1:6777/udpxy/"}
 这里假设xx.m3u为组播直播源，192.168.1.1:6777为udpxy服务端地址
 
 #### 示例三：重命名直播源分组名  
-将「分组1」重命名为「分组2」，「分组3」重命名为「分组4」  
+将「分组1」重命名为「分组2」  
 ```
-http://xxx.xx.m3u #RP={"group-title=\"分组1\"":"group-title=\"分组2\"","group-title=\"分组3\"":"group-title=\"分组4\""}
+http://xxx.xx.m3u #RP={"group-title=\"分组1\"":"group-title=\"分组2\""}
 ```
 #### 示例四：在直播地址前加入自定义信息  
 在所有直播地址前加入一行，包含自定义 User-Agent、Referrer 信息  
 ```
-http://xxx.xx.m3u #EXTVLCOPT={"http-user-agent":"xxx","http-referrer":"xxx"}
+http://xxx.xx.m3u #EXTVLCOPT={"http-user-agent":"xxx", "http-referrer":"xxx"}
+```
+在所有直播地址前的 `#EXTINF` 标签中加入 catchup、catchup-source 信息
+```
+http://xxx.xx.m3u #EXTINFOPT={"catchup":"append", "catchup-source":"?playseek=xxx"}
 ```
 #### 示例五：屏蔽分组、频道、直播源  
 屏蔽包含「购物、央视、127.0.0.1」关键字的分组、频道、直播源  
@@ -108,7 +110,7 @@ http://xxx.xx.m3u #FT=!购物, 央视, 127.0.0.1
 ```
 #### 示例六：使用模板聚合直播源  
 ⚠️ 模糊匹配：默认开启，选「否」进行精准匹配  
-⚠️ 路线备注：默认关闭，选「是」在直播地址后添加「$分组」（TiviMate、Televizo、PotPlayer等m3u播放器一般都需要关闭）  
+⚠️ 路线备注：默认关闭，在直播地址后添加「$分组」  
 
 ##### 模板示例：
 
