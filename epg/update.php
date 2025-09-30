@@ -202,18 +202,29 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
             ? round($fileSize / 1048576, 2) . ' MB' 
             : round($fileSize / 1024, 2) . ' KB';
         logMessage($log_messages, "【下载】 成功 | xml 文件大小：{$fileSizeReadable}{$mtimeStr}");
+        
+        $xml_data = mb_convert_encoding($xml_data, 'UTF-8'); // 转换成 UTF-8 编码
 
-        // 应用多个字符串替换规则（格式：a1->b1,a2->b2,...）
-        if (strpos($replacePattern, '->') !== false) {
-            foreach (explode(',', $replacePattern) as $rule) {
-                if (strpos($rule, '->') !== false) {
-                    [$search, $replace] = array_map('trim', explode('->', $rule, 2));
+        // 应用多个字符串替换规则（JSON格式或老格式 a->b,...）
+        if (!empty($replacePattern)) {
+            $jsonRules = json_decode($replacePattern, true);
+            
+            if (json_last_error() === JSON_ERROR_NONE && is_array($jsonRules)) {
+                // JSON格式
+                foreach ($jsonRules as $search => $replace) {
                     $xml_data = str_replace($search, $replace, $xml_data);
+                }
+            } elseif (strpos($replacePattern, '->') !== false) {
+                // 兼容老格式
+                foreach (explode(',', $replacePattern) as $rule) {
+                    if (strpos($rule, '->') !== false) {
+                        [$search, $replace] = array_map('trim', explode('->', $rule, 2));
+                        $xml_data = str_replace($search, $replace, $xml_data);
+                    }
                 }
             }
         }
-        
-        $xml_data = mb_convert_encoding($xml_data, 'UTF-8'); // 转换成 UTF-8 编码
+
         if (($Config['cht_to_chs'] ?? 1) === 2) { $xml_data = t2s($xml_data); }
         $db->beginTransaction();
         try {
