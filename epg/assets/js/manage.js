@@ -1260,10 +1260,10 @@ async function showLiveUrl() {
         const configData = await configRes.json();
 
         const serverUrl  = serverData.server_url;
-        const token      = configData.token;
+        const token      = configData.token.split('\n')[0];
         const tokenMd5   = configData.token_md5;
         const tokenRange = parseInt(configData.token_range, 10);
-        const modRewrite = serverData.mod_rewrite ? true : false;
+        const redirect = serverData.redirect ? true : false;
 
         // live_source_config 仍从页面 select/input 获取
         const liveSourceElem = document.getElementById('live_source_config');
@@ -1273,8 +1273,8 @@ async function showLiveUrl() {
         const urlParam = (configValue === 'default') ? '' : `url=${configValue}`;
         const query = [tokenStr, urlParam].filter(Boolean).join('&');
 
-        const m3uPath = modRewrite ? '/tv.m3u' : '/index.php?type=m3u';
-        const txtPath = modRewrite ? '/tv.txt' : '/index.php?type=txt';
+        const m3uPath = redirect ? '/tv.m3u' : '/index.php?type=m3u';
+        const txtPath = redirect ? '/tv.txt' : '/index.php?type=txt';
 
         function buildUrl(base, path, query) {
             let url = base + path;
@@ -1285,21 +1285,22 @@ async function showLiveUrl() {
         const m3uUrl = buildUrl(serverUrl, m3uPath, query);
         const txtUrl = buildUrl(serverUrl, txtPath, query);
         
-        function buildProxyUrl(originalUrl, tokenMd5) {
+        function buildCustomUrl(originalUrl, tokenMd5, mode) {
             const url = new URL(originalUrl, location.origin);
             if (tokenRange === 1 || tokenRange === 3) {
                 url.searchParams.set('token', tokenMd5);
             }
-            url.searchParams.set('proxy', '1');
+            url.searchParams.set(mode, '1');
             return url.toString();
         }
         
-        const proxyM3uUrl = buildProxyUrl(m3uUrl, tokenMd5);
-        const proxyTxtUrl = buildProxyUrl(txtUrl, tokenMd5);
+        const proxyM3uUrl = buildCustomUrl(m3uUrl, tokenMd5, 'proxy');
+        const proxyTxtUrl = buildCustomUrl(txtUrl, tokenMd5, 'proxy');
         
         const message =
-            `M3U：<br><a href="${m3uUrl}" target="_blank">${m3uUrl}</a>&ensp;<a href="${m3uUrl}" download="tv.m3u">下载</a><br>` +
-            `TXT：<br><a href="${txtUrl}" target="_blank">${txtUrl}</a>&ensp;<a href="${txtUrl}" download="tv.txt">下载</a><br>` +
+            `访问地址：<br>` +
+            `<a href="${m3uUrl}" target="_blank">${m3uUrl}</a>&ensp;<a href="${m3uUrl}" download="tv.m3u">下载</a><br>` +
+            `<a href="${txtUrl}" target="_blank">${txtUrl}</a>&ensp;<a href="${txtUrl}" download="tv.txt">下载</a><br>` +
             `代理访问：<br>` +
             `<a href="${proxyM3uUrl}" target="_blank">${proxyM3uUrl}</a>&ensp;<a href="${proxyM3uUrl}" download="tv.m3u">下载</a><br>` +
             `<a href="${proxyTxtUrl}" target="_blank">${proxyTxtUrl}</a>&ensp;<a href="${proxyTxtUrl}" download="tv.txt">下载</a>`;
@@ -1826,7 +1827,7 @@ async function showTokenRangeMessage() {
 
         const serverUrl  = serverData.server_url;
         const tokenFull  = configData.token;
-        const modRewrite = serverData.mod_rewrite ? true : false;
+        const redirect = serverData.redirect ? true : false;
 
         // 从页面 select/input 获取 token_range
         const tokenRangeElem = document.getElementById("token_range");
@@ -1836,8 +1837,8 @@ async function showTokenRangeMessage() {
         let message = '';
 
         if (tokenRange === "1" || tokenRange === "3") {
-            const m3u = modRewrite ? `${serverUrl}/tv.m3u?token=${token}` : `${serverUrl}/index.php?type=m3u&token=${token}`;
-            const txt = modRewrite ? `${serverUrl}/tv.txt?token=${token}` : `${serverUrl}/index.php?type=txt&token=${token}`;
+            const m3u = redirect ? `${serverUrl}/tv.m3u?token=${token}` : `${serverUrl}/index.php?type=m3u&token=${token}`;
+            const txt = redirect ? `${serverUrl}/tv.txt?token=${token}` : `${serverUrl}/index.php?type=txt&token=${token}`;
             message += `直播源地址：<br><a href="${m3u}" target="_blank">${m3u}</a><br>
                         <a href="${txt}" target="_blank">${txt}</a>`;
         }
@@ -1863,6 +1864,20 @@ async function showTokenRangeMessage() {
 function debugMode(selectElem) {
     document.getElementById("accessLogBtn").style.display = selectElem.value === "1" ? "inline-block" : "none";
 }
+
+// 页面加载时恢复大小
+const ids = ["xml_urls", "channel_mappings", "sourceUrlTextarea", "live-source-table-container", "gen_list_text"];
+const prefix = "height_";
+const saveHeight = (el) => {
+    if (el.offsetHeight > 0) localStorage.setItem(prefix + el.id, el.offsetHeight);
+};
+ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const h = localStorage.getItem(prefix + id);
+    if (h) el.style.height = h + "px";
+    new ResizeObserver(() => saveHeight(el)).observe(el);
+});
 
 // 切换主题
 document.getElementById('themeSwitcher').addEventListener('click', function() {
