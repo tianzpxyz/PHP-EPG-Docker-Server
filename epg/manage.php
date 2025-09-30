@@ -206,7 +206,7 @@ try {
             case 'get_env':
                 // 获取 serverUrl、redirect
                 $redirect = false;
-                $testUrl = 'http://'.$_SERVER['HTTP_HOST'].'/tv.m3u';
+                $testUrl = 'http://127.0.0.1/tv.m3u';
                 $context = stream_context_create(['http' => ['method' => 'HEAD']]);
                 $headers = @get_headers($testUrl, 1, $context);
                 if ($headers && strpos($headers[0], '404') === false) {
