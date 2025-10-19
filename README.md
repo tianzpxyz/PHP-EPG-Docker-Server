@@ -21,9 +21,9 @@ IPTV 工具箱， `Docker` 部署，支持 **EPG 管理**、**直播源管理**�
 > 
 > 原贴：[【IPTV工具箱】EPG节目单管理、直播源管理、台标管理](https://www.right.com.cn/forum/thread-8386320-1-1.html)
 > 
-> `xmltv` 用户使用方法：[【一键生成】匹配 M3U 文件的 XML 节目单](https://www.right.com.cn/forum/thread-8392662-1-1.html) 
+> `xmltv` 用户使用方法：[【一键生成】匹配 M3U 文件的 XML 节目单](https://www.right.com.cn/forum/thread-8392662-1-1.html)
 >
-> `直播源管理` 使用方法：[【IPTV工具箱】直播源管理使用说明](https://www.right.com.cn/forum/thread-8417162-1-1.html) 
+> `直播源管理` 使用方法：[【IPTV工具箱】直播源管理使用说明](https://www.right.com.cn/forum/thread-8417162-1-1.html)
 >
 > `自定数据源` 使用方法：[【IPTV工具箱】自定义数据源（timetv、51livetv、diyp）](https://www.right.com.cn/forum/thread-8432214-1-1.html)
 
@@ -83,18 +83,35 @@ IPTV 工具箱， `Docker` 部署，支持 **EPG 管理**、**直播源管理**�
 ### [CHANGELOG.md](./CHANGELOG.md)
 
 ## 🚀 部署步骤
-安装、更新、卸载脚本：
-```
+### 部署脚本：
+```bash
 bash <(curl -Ls https://raw.githubusercontent.com/taksssss/iptv-tool/master/install.sh)
 ```
 或者
-```
+```bash
 bash <(curl -Ls https://gitee.com/taksssss/iptv-tool/raw/main/install.sh)
 ```
 或者
-```
+```bash
 bash <(curl -Ls https://gcore.jsdelivr.net/gh/taksssss/iptv-tool@master/install.sh)
 ```
+
+### 手动部署 
+```bash
+docker run -d --name php-epg \
+  -p 5678:80 \
+  -v $HOME/epg:/htdocs/data \
+  -e PHP_MEMORY_LIMIT=512M \
+  -e ENABLE_FFMPEG=false \
+  --restart unless-stopped \
+  taksss/php-epg:latest
+```
+
+> `$HOME/epg`：默认数据目录，根据需要自行修改  
+> `5678`：默认端口，根据需要自行修改（注意端口占用）  
+> `-e PHP_MEMORY_LIMIT=512M`：PHP 内存限制，默认 `512M`  
+> `-e ENABLE_FFMPEG=true`：启用 ffmpeg 组件  
+> 无法正常拉取镜像的，可将 `taksss/php-epg:latest` 替换为 `ccr.ccs.tencentyun.com/taksss/php-epg:latest`
 
 ## 🛠️ 使用步骤
 

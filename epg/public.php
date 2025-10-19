@@ -414,20 +414,44 @@ function getExistingData() {
 }
 
 // 频道数据模糊匹配函数
-function dbChannelNameMatch($channelName) {
-    global $db;
-    $stmt = $db->prepare("
-        SELECT channel FROM epg_data WHERE (channel = :channel OR channel LIKE :like_channel OR INSTR(:channel, channel) > 0)
-        ORDER BY CASE WHEN channel = :channel THEN 1 WHEN channel LIKE :like_channel THEN 2 ELSE 3 END,
-        CASE WHEN channel = :channel THEN NULL WHEN channel LIKE :like_channel THEN LENGTH(channel) ELSE -LENGTH(channel) END
-        LIMIT 1
-    ");
-    $stmt->execute([':channel' => $channelName, ':like_channel' => $channelName . '%']);
-    return $stmt->fetchColumn();
+function dbChannelNameMatch($channelName, $dbChannels) {
+    $channelName = trim($channelName);
+    $bestMatch = null;
+    $bestScore = 0;
+
+    foreach ($dbChannels as $dbChannel) {
+        // 精确匹配，直接返回
+        if ($dbChannel === $channelName) {
+            return $dbChannel;
+        }
+
+        $score = 0;
+
+        // 前缀匹配
+        if (stripos($dbChannel, $channelName) === 0) {
+            $score = 500 + strlen($dbChannel);
+        }
+        // 包含匹配
+        elseif (stripos($dbChannel, $channelName) !== false || stripos($channelName, $dbChannel) !== false) {
+            $score = 100 + strlen($dbChannel);
+        }
+
+        if ($score > $bestScore) {
+            $bestScore = $score;
+            $bestMatch = $dbChannel;
+        }
+    }
+
+    return $bestMatch;
 }
 
 // 解析 txt、m3u 直播源，并生成直播列表（包含分组、地址等信息）
 function doParseSourceInfo($urlLine = null, $parseAll = false) {
+    global $db;
+
+    // 获取频道列表
+    $dbChannels = $db->query("SELECT DISTINCT channel FROM epg_data")->fetchAll(PDO::FETCH_COLUMN);
+
     // 获取当前的最大执行时间，临时设置超时时间为 20 分钟
     $original_time_limit = ini_get('max_execution_time');
     set_time_limit(20*60);
@@ -471,7 +495,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
 
         // 初始化
         $groupPrefix = $userAgent = $replacePattern = $extvlcoptPattern = $proxy = '';
-        $white_list = $black_list = [];
+        $white_list = $black_list = $extInfOpt = [];
 
         foreach ($parts as $i => $part) {
             if ($i === 0) continue; // 跳过 URL 部分
@@ -521,6 +545,15 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                     
                 case 'proxy':
                     $proxy = (int)trim($value);
+                    break;
+
+                case 'extinfopt':
+                    $jsonOpts = json_decode($value, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($jsonOpts)) {
+                        foreach ($jsonOpts as $k => $v) {
+                            $extInfOpt[$k] = $v;
+                        }
+                    }
                     break;
             }
         }
@@ -580,19 +613,55 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
 
         // 处理 M3U 格式的直播源
         if (stripos($urlContent, '#EXTM3U') === 0 || stripos($urlContent, '#EXTINF') === 0) {
+            $defaultOpt = [];
+            
             foreach ($urlContentLines as $i => $urlContentLine) {
                 $urlContentLine = trim($urlContentLine);
-
-                // 跳过空行和 M3U 头部
-                if (empty($urlContentLine) || stripos($urlContentLine, '#EXTM3U') === 0) continue;
+                
+                // 检查 M3U 头部 #EXTM3U 默认属性
+                if (empty($urlContentLine) || stripos($urlContentLine, '#EXTM3U') === 0) {
+                    if (preg_match_all('/([\w-]+)="([^"]*)"/', $urlContentLine, $allMatches, PREG_SET_ORDER)) {
+                        foreach ($allMatches as $m) {
+                            if (stripos($m[1], 'x-tvg') !== 0) {
+                                $defaultOpt[$m[1]] = $m[2];
+                            }
+                        }
+                    }
+                    continue;
+                }
 
                 if (stripos($urlContentLine, '#EXTINF') === 0) {
                     // 处理 #EXTINF 行，提取频道信息
                     if (preg_match('/#EXTINF:-?\d+(.*),(.+)/', $urlContentLine, $matches)) {
                         $channelInfo = $matches[1];
-                        $groupTitle = preg_match('/group-title="([^"]+)"/', $channelInfo, $match) ? trim($match[1]) : '';
                         $originalChannelName = trim($matches[2]);
+                        $chExtInfOpt = [];
 
+                        if (preg_match_all('/([\w-]+)="([^"]*)"/', $matches[1], $optMatches, PREG_SET_ORDER)) {
+                            foreach ($optMatches as $m) {
+                                $chExtInfOpt[$m[1]] = $m[2];
+                            }
+                        }
+                
+                        // 优先级：defaultOpt < chExtInfOpt < extInfOpt
+                        $chInfOpt = array_merge($defaultOpt, $chExtInfOpt, $extInfOpt);
+
+                        // 弹出常用字段
+                        $groupTitle = $chInfOpt['group-title'] ?? '';
+                        $iconUrl    = $chInfOpt['tvg-logo'] ?? '';
+                        $tvgId      = $chInfOpt['tvg-id'] ?? '';
+                        $tvgName    = $chInfOpt['tvg-name'] ?? '';
+
+                        // 删除已取出的字段
+                        unset($chInfOpt['group-title'], $chInfOpt['tvg-logo'], $chInfOpt['tvg-id'], $chInfOpt['tvg-name']);
+
+                        // 将剩余 chInfOpt 转成 key="value" 字符串
+                        $chInfOptStr = implode(' ', array_map(
+                            function($k, $v){ return $k . '="' . $v . '"'; },
+                            array_keys($chInfOpt),
+                            $chInfOpt
+                        ));
+                        
                         // 收集 streamUrl，包括可能的 # 行
                         $streamUrl = '';
 
@@ -619,8 +688,12 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                         // 添加真正的 URL，考虑 PROXY 选项
                         $rawUrl = strtok(trim($urlContentLines[$j] ?? ''), '\\');
                         if ($proxy === 1) {
-                            $encUrl = urlencode(encryptUrl($rawUrl, $Config['token']));
-                            $streamUrl .= "#PROXY=" . $encUrl;
+                            $parts = explode('#', $rawUrl);
+                            $encParts = [];
+                            foreach ($parts as $part) {
+                                $encParts[] = '#PROXY=' . urlencode(encryptUrl($part, $Config['token']));
+                            }
+                            $streamUrl = implode('#', $encParts);
                         } else {
                             $streamUrl .= $rawUrl . ($proxy === 0 ? "#NOPROXY" : "");
                         }
@@ -632,14 +705,15 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                             'channelName' => $originalChannelName,
                             'chsChannelName' => '',
                             'streamUrl' => $streamUrl,
-                            'iconUrl' => preg_match('/tvg-logo="([^"]+)"/', $channelInfo, $match) ? $match[1] : '',
-                            'tvgId' => preg_match('/tvg-id="([^"]+)"/', $channelInfo, $match) ? $match[1] : '',
-                            'tvgName' => preg_match('/tvg-name="([^"]+)"/', $channelInfo, $match) ? $match[1] : '',
+                            'iconUrl' => $iconUrl,
+                            'tvgId' => $tvgId,
+                            'tvgName' => $tvgName,
                             'disable' => 0,
                             'modified' => 0,
                             'source' => $url,
                             'tag' => $tag,
                             'config' => $liveSourceConfig,
+                            'chInfOpt' => $chInfOptStr,
                         ];
 
                         $urlChannelData[] = $rowData;
@@ -661,11 +735,15 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
             
                     $originalChannelName = trim($parts[0]);
                     $rawUrl = trim($parts[1]) . (isset($parts[2]) && $parts[2] === '' ? ',' : ''); // 最后一个 , 后为空，则视为 URL 一部分
-                    if ($proxy == 1) {
-                        $encUrl = urlencode(encryptUrl($rawUrl, $Config['token']));
-                        $streamUrl = "#PROXY=" . $encUrl;
+                    if ($proxy === 1) {
+                        $parts = explode('#', $rawUrl);
+                        $encParts = [];
+                        foreach ($parts as $part) {
+                            $encParts[] = '#PROXY=' . urlencode(encryptUrl($part, $Config['token']));
+                        }
+                        $streamUrl = implode('#', $encParts);
                     } else {
-                        $streamUrl = $rawUrl . ($proxy == 0 ? "#NOPROXY" : "");
+                        $streamUrl = $rawUrl . ($proxy === 0 ? "#NOPROXY" : "");
                     }
                     $tag = md5($url . $groupTitle . $originalChannelName . $rawUrl);
 
@@ -683,6 +761,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                         'source' => $url,
                         'tag' => $tag,
                         'config' => $liveSourceConfig,
+                        'chInfOpt' => [],
                     ];
             
                     $urlChannelData[] = $rowData;
@@ -719,13 +798,19 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
             }
 
             // 更新部分信息
+            if (!empty($chInfOpt = $row['chInfOpt'])) {
+                $row['streamUrl'] = "#EXTINFOPT:{$chInfOpt}\n" . $extvlcoptPattern . $streamUrl;
+            } else {
+                $row['streamUrl'] = $extvlcoptPattern . $streamUrl;
+            }
+            
             $cleanChannelName = cleanChannelName($chsChannelName);
-            $dbChannelName = dbChannelNameMatch($cleanChannelName);
+            $dbChannelName = dbChannelNameMatch($cleanChannelName, $dbChannels);
             $finalChannelName = $dbChannelName ?: $cleanChannelName;
             $oriChannelName = $row['channelName'];
+
             $row['channelName'] = $liveChannelNameProcess ? $finalChannelName : $row['channelName'];
             $row['chsChannelName'] = $chsChannelName;
-            $row['streamUrl'] = $extvlcoptPattern . $streamUrl;
             $row['iconUrl'] = ($row['iconUrl'] ?? false) && ($Config['m3u_icon_first'] ?? false)
                             ? $row['iconUrl']
                             : (iconUrlMatch([$cleanChannelName, $oriChannelName]) ?: $row['iconUrl']);
@@ -744,6 +829,15 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
     set_time_limit($original_time_limit);
     
     return $errorLog ?: true;
+}
+
+// 提取 #EXTINFOPT 并删除
+function extractExtInfOpt(&$streamUrl) {
+    if (preg_match('/^#EXTINFOPT:(.+)$/m', $streamUrl, $m)) {
+        $streamUrl = trim(preg_replace('/^#EXTINFOPT:.+$/m', '', $streamUrl));
+        return ' ' . trim($m[1]);
+    }
+    return '';
 }
 
 // 生成 M3U 和 TXT 文件
@@ -813,6 +907,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                     }
 
                     // 更新信息
+                    $extInfOptStr = extractExtInfOpt($streamUrl);
                     $m3uStreamUrl = $streamUrl . (($m3uCommentEnabled && strpos($streamUrl, '$') === false) ? "\${$groupTitle}" : "");
                     $rowGroupTitle = $templateGroupTitle === 'default' ? $groupTitle : $templateGroupTitle;
                     $row['groupTitle'] = $rowGroupTitle;
@@ -825,7 +920,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                         ($tvgId && $liveTvgIdEnable ? " tvg-id=\"$tvgId\"" : "") . 
                         ($tvgName && $liveTvgNameEnable ? " tvg-name=\"$tvgName\"" : "") . 
                         ($iconUrl && $liveTvgLogoEnable ? " tvg-logo=\"$iconUrl\"" : "") . 
-                        " group-title=\"$rowGroupTitle\"," . 
+                        " group-title=\"$rowGroupTitle\"$extInfOptStr," . 
                         "$channelName";
 
                     $m3uContent .= $extInfLine . "\n" . $m3uStreamUrl . "\n";
@@ -856,6 +951,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                             (stripos($cleanChsChannelName, $cleanChsGroupChannelName) || stripos($cleanChsGroupChannelName, $cleanChsChannelName)) || 
                             (strpos($groupChannelName, 'regex:') === 0) && @preg_match(substr($groupChannelName, 6), $channelName . $cleanChsChannelName)))) {
                             // 更新信息
+                            $extInfOptStr = extractExtInfOpt($streamUrl);
                             $m3uStreamUrl = $streamUrl . (($m3uCommentEnabled && strpos($streamUrl, '$') === false) ? "\${$groupTitle}" : "");
                             $rowGroupTitle = $templateGroupTitle === 'default' ? $groupTitle : $templateGroupTitle;
                             $row['groupTitle'] = $rowGroupTitle;
@@ -869,7 +965,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                                 ($tvgId && $liveTvgIdEnable ? " tvg-id=\"$tvgId\"" : "") . 
                                 ($tvgName && $liveTvgNameEnable ? " tvg-name=\"$tvgName\"" : "") . 
                                 ($iconUrl && $liveTvgLogoEnable ? " tvg-logo=\"$iconUrl\"" : "") . 
-                                " group-title=\"$rowGroupTitle\"," . 
+                                " group-title=\"$rowGroupTitle\"$extInfOptStr," . 
                                 $row['channelName']; // 使用 $groupChannels 中的名称
 
                             $m3uContent .= $extInfLine . "\n" . $m3uStreamUrl . "\n";
@@ -885,12 +981,15 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
             list(, $groupTitle, $channelName, , $streamUrl, $iconUrl, $tvgId, $tvgName, $disable) = array_values($row);
             if ($disable) continue;
     
+            // 提取 #EXTINFOPT 行内容
+            $extInfOptStr = extractExtInfOpt($streamUrl);
+
             // 生成 M3U 内容
             $extInfLine = "#EXTINF:-1" . 
                 ($tvgId && $liveTvgIdEnable ? " tvg-id=\"$tvgId\"" : "") . 
                 ($tvgName && $liveTvgNameEnable ? " tvg-name=\"$tvgName\"" : "") . 
                 ($iconUrl && $liveTvgLogoEnable ? " tvg-logo=\"$iconUrl\"" : "") . 
-                ($groupTitle ? " group-title=\"$groupTitle\"" : "") . 
+                ($groupTitle ? " group-title=\"$groupTitle\"" : "") . $extInfOptStr . 
                 ",$channelName";
                 
             $m3uStreamUrl = $streamUrl . (($m3uCommentEnabled && strpos($streamUrl, '$') === false) ? "\${$groupTitle}" : "");

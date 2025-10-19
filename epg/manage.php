@@ -204,12 +204,15 @@ try {
                 break;
 
             case 'get_env':
-                // 获取 serverUrl、modRewrite
-                $modRewrite = false;
-                if (function_exists('apache_get_modules') && in_array('mod_rewrite', apache_get_modules())) {
-                    $modRewrite = true;
+                // 获取 serverUrl、redirect
+                $redirect = false;
+                $testUrl = 'http://127.0.0.1/tv.m3u';
+                $context = stream_context_create(['http' => ['method' => 'HEAD']]);
+                $headers = @get_headers($testUrl, 1, $context);
+                if ($headers && strpos($headers[0], '404') === false) {
+                    $redirect = true;
                 }
-                $dbResponse = ['server_url' => $serverUrl, 'mod_rewrite' => $modRewrite];
+                $dbResponse = ['server_url' => $serverUrl, 'redirect' => $redirect];
                 break;
 
             case 'get_update_logs':

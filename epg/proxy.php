@@ -9,8 +9,12 @@
 
 require_once 'public.php';
 
+// 解析查询参数
+$query = $_SERVER['QUERY_STRING'] ?? '';
+parse_str(str_replace('?', '&', $query), $query_params);
+
 // 获取加密后的 URL
-$encUrl = $_GET['url'] ?? '';
+$encUrl = $query_params['url'] ?? '';
 if (!$encUrl) {
     http_response_code(403);
     exit('Forbidden: Missing URL');
@@ -28,6 +32,12 @@ $nop = false;
 if (substr($url, -8) === '#NOPROXY') {
     $nop = true;
     $url = substr($url, 0, -8);
+}
+
+// 去掉 url 参数，拼接其他参数
+unset($query_params['url']);
+if ($query_params) {
+    $url .= (strpos($url, '?') === false ? '?' : '&') . http_build_query($query_params);
 }
 
 // 如果是 NOPROXY，直接跳转
