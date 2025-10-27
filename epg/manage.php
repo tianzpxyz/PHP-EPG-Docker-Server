@@ -667,7 +667,8 @@ try {
                     }
                     $row['counts'] = $counts;
                 }
-            
+                unset($row);
+                
                 $dbResponse = ['success' => true, 'ipData' => array_values($ipData), 'dates' => $dates];
                 break;
                 

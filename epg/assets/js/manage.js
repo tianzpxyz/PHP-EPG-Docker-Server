@@ -306,7 +306,7 @@ function showExecResult(fileName, callback, fullSize = true) {
 
     const wrapper = document.createElement('div');
     if (fullSize) {
-        wrapper.style.width = '930px';
+        wrapper.style.width = '1000px';
         wrapper.style.height = '504px';
     } else {
         wrapper.style.maxWidth = '600px';
@@ -493,11 +493,11 @@ function showAccessLogModal() {
 
                 const pre = box.querySelector("pre");
                 if (!pre) {
-                    box.innerHTML = `<pre>${d.content || ""}</pre><div>持续刷新中...</div>`;
+                    box.innerHTML = `<pre>${highlightIPs(d.content || "")}</pre><div>持续刷新中...</div>`;
                     box.scrollTop = box.scrollHeight;
                 } else if (d.changed && d.content) {
                     const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
-                    pre.innerText += d.content;
+                    pre.innerHTML += highlightIPs(d.content);
                     if (atBottom) box.scrollTop = box.scrollHeight;
                 }
 
@@ -519,6 +519,14 @@ function showAccessLogModal() {
     };
 }
 
+// 把文本里的 IP 转成可点击链接
+function highlightIPs(text) {
+    const ipRegex = /\b\d{1,3}(?:\.\d{1,3}){3}\b/g;
+    return text.replace(ipRegex, ip => {
+        return `<a href="#" onclick="queryIpLocation('${ip}', true); return false;">${ip}</a>`;
+    });
+}
+
 // 访问日志统计
 function showAccessStats() {
     clearInterval(timer);
@@ -538,6 +546,7 @@ function showAccessStats() {
 
 let currentSort = { column: 'total', order: 'desc' };
 let cachedData = { ipData: [], dates: [], rawStats: {} };
+let ipLocationCache = {};
 
 function loadAccessStats() {
     const tbody = document.querySelector("#accessStatsTable tbody");
@@ -594,6 +603,7 @@ function renderTableHeader(dates) {
     return `
         <tr>
             <th onclick="sortByColumn('ip')">IP地址${arrow('ip')}</th>
+            <th>归属地</th>
             ${dates.map(date => `<th onclick="sortByColumn('${date}')">${date.slice(5)}${arrow(date)}</th>`).join('')}
             <th onclick="sortByColumn('deny')">拒绝${arrow('deny')}</th>
             <th onclick="sortByColumn('total')">总计${arrow('total')}</th>
@@ -607,6 +617,7 @@ function renderTableRow({ ip, counts, total, deny }) {
     return `
         <tr>
             <td><a href="#" onclick="filterLogByIp('${ip}'); return false;">${ip}</a></td>
+            <td id="loc-${ip}"><a href="#" onclick="queryIpLocation('${ip}'); return false;">点击查询</a></td>
             ${countCells}
             <td>${deny}</td>
             <td>${total}</td>
@@ -618,15 +629,47 @@ function renderTableRow({ ip, counts, total, deny }) {
     `;
 }
 
+function queryIpLocation(ip, showModal = false) {
+    const cell = document.getElementById(`loc-${ip}`);
+
+    // 如果有缓存
+    if (ipLocationCache[ip]) {
+        if (cell) cell.textContent = ipLocationCache[ip];
+        if (showModal) showMessageModal(`${ip} 的归属地：${ipLocationCache[ip]}`);
+        return;
+    }
+
+    if (cell) cell.textContent = "查询中...";
+    if (showModal) showMessageModal(`正在查询 ${ip} 的归属地，请稍候...`);
+
+    const callbackName = "jsonp_cb_" + ip.replace(/\./g, "_");
+    window[callbackName] = function(d) {
+        let location = "未找到";
+        if (d && d.data && d.data[0] && d.data[0].location) {
+            location = d.data[0].location;
+            ipLocationCache[ip] = location;
+        }
+
+        if (cell) cell.textContent = location;
+        if (showModal) showMessageModal(`${ip} 的归属地：${location}`);
+
+        delete window[callbackName];
+    };
+
+    const script = document.createElement("script");
+    script.src = `http://opendata.baidu.com/api.php?co=&resource_id=6006&oe=utf8&query=${ip}&cb=${callbackName}`;
+    document.body.appendChild(script);
+}
+
 function filterLogByIp(ip) {
     const logContent = document.getElementById("accessLogContent").innerText || '';
     const lines = logContent.split('\n').filter(line => line.includes(ip));
     const filtered = lines.length > 0 ? lines.map(line => line.trimEnd()).join('\n') : `无记录：${ip}`;
     showMessageModal(`
-        <div id="filteredLog" style="width:930px; height:504px; overflow:auto; font-family:monospace; white-space:pre;">${filtered.replace(/\n/g, '<br>')}</div>
+        <div id="filteredLog" style="width:1000px; height:504px; overflow:auto; font-family:monospace; white-space:pre;">${filtered.replace(/\n/g, '<br>')}</div>
     `);
     const d = document.getElementById("filteredLog");
-    if (d) d.scrollTop = d.scrollHeight;;
+    if (d) d.scrollTop = d.scrollHeight;
 }
 
 function addIp(ip, type) {
@@ -864,8 +907,8 @@ function displayPage(data, page) {
     }
 
     // 列索引和对应字段的映射
-    const columns = ['groupTitle', 'channelName', 'streamUrl', 'iconUrl', 'tvgId', 
-                    'tvgName', 'resolution', 'speed', 'disable', 'modified'];
+    const columns = ['groupPrefix', 'groupTitle', 'channelName', 'streamUrl', 'iconUrl', 
+                    'tvgId', 'tvgName', 'resolution', 'speed', 'disable', 'modified'];
 
     // 填充当前页的表格数据
     data.slice(start, end).forEach((item, index) => {
