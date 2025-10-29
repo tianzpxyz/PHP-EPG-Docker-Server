@@ -1067,6 +1067,7 @@ function filterLiveSourceData() {
     const keyword = document.getElementById('liveSourceSearchInput').value.trim().toLowerCase();
     filteredLiveData = allLiveData.filter(item =>
         (item.channelName || '').toLowerCase().includes(keyword) ||
+        (item.groupPrefix || '').toLowerCase().includes(keyword) ||
         (item.groupTitle || '').toLowerCase().includes(keyword) ||
         (item.streamUrl || '').toLowerCase().includes(keyword) ||
         (item.tvgId || '').toLowerCase().includes(keyword) ||
@@ -1295,8 +1296,8 @@ async function showLiveUrl() {
     try {
         // 并行获取 serverUrl 和 config
         const [serverRes, configRes] = await Promise.all([
-            fetch('/manage.php?get_env=true'),
-            fetch('/manage.php?get_config=true')
+            fetch('manage.php?get_env=true'),
+            fetch('manage.php?get_config=true')
         ]);
 
         const serverData = await serverRes.json();
@@ -1797,7 +1798,7 @@ document.getElementById('importFile').addEventListener('change', function() {
 async function changeTokenUA(type) {
     try {
         // 获取 config
-        const res = await fetch('/manage.php?get_config=true');
+        const res = await fetch('manage.php?get_config=true');
         const config = await res.json();
 
         // 根据 type 获取对应的值
@@ -1861,8 +1862,8 @@ async function showTokenRangeMessage() {
     try {
         // 并行获取 serverUrl 和 config
         const [serverRes, configRes] = await Promise.all([
-            fetch('/manage.php?get_env=true'),
-            fetch('/manage.php?get_config=true')
+            fetch('manage.php?get_env=true'),
+            fetch('manage.php?get_config=true')
         ]);
 
         const serverData = await serverRes.json();
