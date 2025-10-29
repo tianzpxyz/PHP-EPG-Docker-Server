@@ -576,7 +576,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
         
         // 尝试获取内容，最多重试5次，每次等待5秒
         for ($retry = 0; $retry < 5; $retry++) {
-            if (!$urlContent || preg_match('/^(#EXTM3U|#EXTINF)|#genre#|,https?:\/\//i', $urlContent)) break;
+            if (!$urlContent || preg_match('/^(#EXTM3U|#EXTINF)|#genre#|[^,]+,.+/i', $urlContent)) break;
             sleep(5);
             [$urlContent, $error] = downloadData($url, $userAgent, 10, 10, 3);
         }
@@ -584,7 +584,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
         if ($retry) $errorLog .= "$url 重试 $retry 次<br>";
         
         // 最终回退缓存或报错
-        if (!$urlContent || !preg_match('/^(#EXTM3U|#EXTINF)|#genre#|,https?:\/\//i', $urlContent)) {
+        if (!$urlContent || !preg_match('/^(#EXTM3U|#EXTINF)|#genre#|[^,]+,.+/i', $urlContent)) {
             $urlContent = @file_get_contents($localFilePath) ?: '';
             $errorLog .= $urlContent ? "$url 使用本地缓存<br>" : "解析失败：$url<br>错误：" . ($error ?: '空内容或格式不符') . "<br>";
             if (!$urlContent) continue;
@@ -934,7 +934,6 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
             if (empty($groupInfo['channels'])) {
                 foreach ($channelData as $row) {
                     [
-                        'category'   => $category,
                         'groupPrefix' => $groupPrefix,
                         'groupTitle'  => $groupTitle,
                         'channelName' => $channelName,
@@ -971,7 +970,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                         ($tvgId && $liveTvgIdEnable ? " tvg-id=\"$tvgId\"" : "") . 
                         ($tvgName && $liveTvgNameEnable ? " tvg-name=\"$tvgName\"" : "") . 
                         ($iconUrl && $liveTvgLogoEnable ? " tvg-logo=\"$iconUrl\"" : "") . 
-                        ($ku9SecondaryGrouping ? " category=\"$category\"" : "") . 
+                        ($ku9SecondaryGrouping ? " category=\"{$row['category']}\"" : "") . 
                         " group-title=\"$rowGroupTitle\"" . 
                         $extInfOptStr . "," . 
                         "$channelName";
@@ -988,7 +987,6 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                     $cleanChsGroupChannelName = $cleanChsGroupChannelNames[$index];
                     foreach ($channelData as $row) {
                         [
-                            'category'   => $category,
                             'groupPrefix'    => $groupPrefix,
                             'groupTitle'     => $groupTitle,
                             'channelName'    => $channelName,
@@ -1036,7 +1034,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                                 ($tvgId && $liveTvgIdEnable ? " tvg-id=\"$tvgId\"" : "") . 
                                 ($tvgName && $liveTvgNameEnable ? " tvg-name=\"$tvgName\"" : "") . 
                                 ($iconUrl && $liveTvgLogoEnable ? " tvg-logo=\"$iconUrl\"" : "") . 
-                                ($ku9SecondaryGrouping ? " category=\"$category\"" : "") . 
+                                ($ku9SecondaryGrouping ? " category=\"{$row['category']}\"" : "") . 
                                 " group-title=\"$rowGroupTitle\"" . 
                                 $extInfOptStr . "," . 
                                 $row['channelName']; // 使用 $groupChannels 中的名称
@@ -1052,7 +1050,6 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
         // 处理没有模板及仅保存修改信息的情况
         foreach ($channelData as $row) {
             [
-                'category'   => $category,
                 'groupPrefix' => $groupPrefix,
                 'groupTitle'  => $groupTitle,
                 'channelName' => $channelName,
@@ -1104,7 +1101,6 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
 
     foreach ($channelData as $row) {
         [
-            'category'   => $category,
             'groupPrefix' => $groupPrefix,
             'groupTitle'  => $groupTitle,
             'channelName' => $channelName,
@@ -1127,7 +1123,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                 $value = $m[2];
 
                 $ku9SecondaryGrouping
-                    ? $groupHeaders[$category][$genre][$key] = $value
+                    ? $groupHeaders[$row['category']][$genre][$key] = $value
                     : $groupHeaders[$genre][$key] = $value;
             }
         }
@@ -1141,7 +1137,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
             : $streamUrl;
 
         if ($ku9SecondaryGrouping) {
-            $groupedData[$category][$genre][] = $channelName . ',' . $txtStreamUrl;
+            $groupedData[$row['category']][$genre][] = $channelName . ',' . $txtStreamUrl;
         } else {
             $groupedData[$genre][] = $channelName . ',' . $txtStreamUrl;
         }
