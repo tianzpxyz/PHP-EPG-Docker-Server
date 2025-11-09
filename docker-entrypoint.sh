@@ -1,17 +1,19 @@
 #!/bin/sh
-
-# Exit on non defined variables and on non zero exit codes
 set -eu
 
-SERVER_ADMIN="${SERVER_ADMIN:-you@example.com}"
-HTTP_SERVER_NAME="${HTTP_SERVER_NAME:-www.example.com}"
-HTTPS_SERVER_NAME="${HTTPS_SERVER_NAME:-www.example.com}"
+SERVER_NAME="${SERVER_NAME:-www.example.com}"
 LOG_LEVEL="${LOG_LEVEL:-info}"
 TZ="${TZ:-Asia/Shanghai}"
 PHP_MEMORY_LIMIT="${PHP_MEMORY_LIMIT:-512M}"
 ENABLE_FFMPEG="${ENABLE_FFMPEG:-false}"
+
 HTTP_PORT="${HTTP_PORT:-80}"
 HTTPS_PORT="${HTTPS_PORT:-443}"
+
+ENABLE_HTTPS="${ENABLE_HTTPS:-false}"
+FORCE_HTTPS="${FORCE_HTTPS:-false}"
+CERT_FILE="${CERT_FILE:-/etc/ssl/certs/server.crt}"
+KEY_FILE="${KEY_FILE:-/etc/ssl/private/server.key}"
 
 echo 'Updating configurations'
 
@@ -29,79 +31,111 @@ else
     echo "Skipping ffmpeg installation."
 fi
 
-# Check if the required configuration is already present
-if ! grep -q "# Directory Listing Disabled" /etc/apache2/httpd.conf; then
-cat <<EOF >> /etc/apache2/httpd.conf
-# Directory Listing Disabled
-<Directory "/htdocs">
-    Options -Indexes
-    AllowOverride All
-    Require all granted
-</Directory>
-
-# Block access to /htdocs/data except for /htdocs/data/icon
-<Directory "/htdocs/data">
-    Require all denied
-</Directory>
-
-<Location "/data/icon">
-    Require all granted
-</Location>
-EOF
+# If https is enabled, certificate files must exist
+if [ "$ENABLE_HTTPS" = "true" ]; then
+    if [ ! -f "$CERT_FILE" ] || [ ! -f "$KEY_FILE" ]; then
+        echo "ERROR: ENABLE_HTTPS=true but certificate files not found!"
+        echo "CERT_FILE=$CERT_FILE"
+        echo "KEY_FILE=$KEY_FILE"
+        echo "Please mount certificates with -v."
+        exit 1
+    fi
 fi
 
-# Write URL rewrite rules to conf.d/rewrite.conf
-cat <<'EOF' > /etc/apache2/conf.d/rewrite.conf
-<IfModule mod_rewrite.c>
-    RewriteEngine On
+echo "Generating Nginx configuration..."
 
-    # /tv.m3u
-    RewriteCond %{QUERY_STRING} !(^|&)type=m3u(&|$)
-    RewriteRule ^/tv\.m3u$ /index.php?type=m3u&%{QUERY_STRING} [L]
+# Common locations config
+cat <<'EOF' > /etc/nginx/common-locations.conf
+autoindex off;
 
-    # /tv.txt
-    RewriteCond %{QUERY_STRING} !(^|&)type=txt(&|$)
-    RewriteRule ^/tv\.txt$ /index.php?type=txt&%{QUERY_STRING} [L]
+location ^~ /data/ {
+    deny all;
+}
+location ^~ /data/icon/ {
+    allow all;
+}
 
-    # /t.xml
-    RewriteCond %{QUERY_STRING} !(^|&)type=xml(&|$)
-    RewriteRule ^/t\.xml$ /index.php?type=xml&%{QUERY_STRING} [L]
+location = /tv.m3u { rewrite ^ /index.php?type=m3u&$query_string last; }
+location = /tv.txt { rewrite ^ /index.php?type=txt&$query_string last; }
+location = /t.xml { rewrite ^ /index.php?type=xml&$query_string last; }
+location = /t.xml.gz { rewrite ^ /index.php?type=gz&$query_string last; }
 
-    # /t.xml.gz
-    RewriteCond %{QUERY_STRING} !(^|&)type=gz(&|$)
-    RewriteRule ^/t\.xml\.gz$ /index.php?type=gz&%{QUERY_STRING} [L]
-</IfModule>
+location ~ \.php$ {
+    include fastcgi_params;
+    fastcgi_pass 127.0.0.1:9000;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    fastcgi_index index.php;
+}
 EOF
 
-# Change Server Admin, Name, Document Root
-sed -i "s/ServerAdmin\ you@example.com/ServerAdmin\ ${SERVER_ADMIN}/" /etc/apache2/httpd.conf
-sed -i "s/#ServerName\ www.example.com:80/ServerName\ ${HTTP_SERVER_NAME}:${HTTP_PORT}/" /etc/apache2/httpd.conf
-sed -i 's#^DocumentRoot ".*#DocumentRoot "/htdocs"#g' /etc/apache2/httpd.conf
-sed -i 's#Directory "/var/www/localhost/htdocs"#Directory "/htdocs"#g' /etc/apache2/httpd.conf
-sed -i 's#AllowOverride None#AllowOverride All#' /etc/apache2/httpd.conf
 
-# Change TransferLog after ErrorLog
-sed -i 's#^ErrorLog .*#ErrorLog "/dev/stderr"\nTransferLog "/dev/null"#g' /etc/apache2/httpd.conf
-sed -i 's#CustomLog .* combined#CustomLog "/dev/null" combined#g' /etc/apache2/httpd.conf
+# Build Nginx server blocks
+if [ "$ENABLE_HTTPS" = "true" ]; then
 
-# SSL DocumentRoot and Log locations
-sed -i 's#^ErrorLog .*#ErrorLog "/dev/stderr"#g' /etc/apache2/conf.d/ssl.conf
-sed -i 's#^TransferLog .*#TransferLog "/dev/null"#g' /etc/apache2/conf.d/ssl.conf
-sed -i 's#^DocumentRoot ".*#DocumentRoot "/htdocs"#g' /etc/apache2/conf.d/ssl.conf
-sed -i "s/ServerAdmin\ you@example.com/ServerAdmin\ ${SERVER_ADMIN}/" /etc/apache2/conf.d/ssl.conf
-sed -i "s/ServerName\ www.example.com:443/ServerName\ ${HTTPS_SERVER_NAME}:${HTTPS_PORT}/" /etc/apache2/conf.d/ssl.conf
+    # HTTP server
+    if [ "$FORCE_HTTPS" = "true" ]; then
+        # 80 redirect to https
+        cat <<EOF > /etc/nginx/http.d/default.conf
+server {
+    listen ${HTTP_PORT};
+    server_name ${SERVER_NAME};
 
-# Re-define LogLevel
-sed -i "s#^LogLevel .*#LogLevel ${LOG_LEVEL}#g" /etc/apache2/httpd.conf
+    return 301 https://\$host\$request_uri;
+}
+EOF
+    else
+        # Normal http
+        cat <<EOF > /etc/nginx/http.d/default.conf
+server {
+    listen ${HTTP_PORT};
+    server_name ${SERVER_NAME};
+    root /htdocs;
 
-# Enable commonly used apache modules
-sed -i 's/#LoadModule\ rewrite_module/LoadModule\ rewrite_module/' /etc/apache2/httpd.conf
-sed -i 's/#LoadModule\ deflate_module/LoadModule\ deflate_module/' /etc/apache2/httpd.conf
-sed -i 's/#LoadModule\ expires_module/LoadModule\ expires_module/' /etc/apache2/httpd.conf
+    include /etc/nginx/common-locations.conf;
 
-# Configure dynamic ports
-sed -i "s/^Listen 80$/Listen ${HTTP_PORT}/" /etc/apache2/httpd.conf
-sed -i "s/^Listen 443$/Listen ${HTTPS_PORT}/" /etc/apache2/conf.d/ssl.conf
+    access_log /dev/null;
+    error_log /dev/stderr ${LOG_LEVEL};
+}
+EOF
+    fi
+
+    # HTTPS server block
+    cat <<EOF >> /etc/nginx/http.d/default.conf
+
+server {
+    listen ${HTTPS_PORT} ssl;
+    server_name ${SERVER_NAME};
+
+    ssl_certificate     ${CERT_FILE};
+    ssl_certificate_key ${KEY_FILE};
+
+    root /htdocs;
+
+    include /etc/nginx/common-locations.conf;
+
+    access_log /dev/null;
+    error_log /dev/stderr ${LOG_LEVEL};
+}
+EOF
+
+else
+
+    # HTTP only
+    cat <<EOF > /etc/nginx/http.d/default.conf
+server {
+    listen ${HTTP_PORT};
+    server_name ${SERVER_NAME};
+    root /htdocs;
+
+    include /etc/nginx/common-locations.conf;
+
+    access_log /dev/null;
+    error_log /dev/stderr ${LOG_LEVEL};
+}
+EOF
+
+fi
+
 
 # Modify php memory limit, timezone and file size limit
 sed -i "s/memory_limit = .*/memory_limit = ${PHP_MEMORY_LIMIT}/" /etc/php83/php.ini
@@ -113,20 +147,18 @@ sed -i "s/post_max_size = .*/post_max_size = 100M/" /etc/php83/php.ini
 if [ -e /etc/localtime ]; then rm -f /etc/localtime; fi
 ln -s /usr/share/zoneinfo/${TZ} /etc/localtime
 
-echo 'Running cron.php and Apache'
+echo 'Running cron.php, php-fpm and nginx'
 
 # Change ownership of /htdocs
-chown -R apache:apache /htdocs
+chown -R nginx:nginx /htdocs
 
-# Start cron.php
-cd /htdocs
-su -s /bin/sh -c "php cron.php &" "apache"
-
-# Remove stale PID file
-if [ -f /run/apache2/httpd.pid ]; then
-    echo "Removing stale httpd PID file"
-    rm -f /run/apache2/httpd.pid
+# Start cron.php if exists
+if [ -f /htdocs/cron.php ]; then
+    cd /htdocs
+    su -s /bin/sh -c "php cron.php &" "nginx"
 fi
 
-# Start Memcached and Apache
-memcached -u nobody -d && httpd -D FOREGROUND
+# Start services
+memcached -u nobody -d
+php-fpm83 -D
+exec nginx -g 'daemon off;'

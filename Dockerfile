@@ -1,20 +1,18 @@
 FROM alpine:3.20
-LABEL maintainer="erik.soderblom@gmail.com"
-LABEL description="Alpine based image with apache2 and php8.3."
-
-# MOD: Tak
+LABEL maintainer="decat2008@gmail.com"
+LABEL description="Alpine based image with nginx and php8.3-fpm."
 
 # 使用中科大镜像（改用GitHub Actions，无需镜像）
 # RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 
-# 安装 Apache 和 PHP
+# 安装常用扩展
 RUN apk --no-cache --update \
-    add apache2 \
-    apache2-ssl \
+    add nginx \
     curl \
     memcached \
     tzdata \
-    php83-apache2 \
+    php83-fpm \
+    php83-cli \
     php83-bcmath \
     php83-bz2 \
     php83-calendar \
@@ -42,7 +40,7 @@ RUN apk --no-cache --update \
     php83-zip \
     php83-pecl-memcached \
     php83-pecl-redis \
-    && mkdir /htdocs
+    && mkdir -p /htdocs /run/nginx
 
 # 复制 ./epg 文件夹内容到 /htdocs
 COPY ./epg /htdocs
