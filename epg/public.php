@@ -596,7 +596,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
             $urlContent = mb_convert_encoding($urlContent, 'UTF-8', 'GBK');
         }
 
-        // 应用多个字符串替换规则（JSON格式或老格式 a->b,...）
+        // 应用多个字符串替换规则
         if (!empty($replacePattern)) {
             $jsonRules = json_decode($replacePattern, true);
             
@@ -605,15 +605,6 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                 foreach ($jsonRules as $search => $replace) {
                     $replace = str_replace("\\n", "\n", $replace); // 识别 \n
                     $urlContent = str_replace($search, $replace, $urlContent);
-                }
-            } elseif (strpos($replacePattern, '->') !== false) {
-                // 兼容老格式
-                foreach (explode(',', $replacePattern) as $rule) {
-                    if (strpos($rule, '->') !== false) {
-                        [$search, $replace] = array_map('trim', explode('->', $rule, 2));
-                        $replace = str_replace("\\n", "\n", $replace); // 识别 \n
-                        $urlContent = str_replace($search, $replace, $urlContent);
-                    }
                 }
             }
         }
@@ -860,7 +851,6 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
     $commentEnabled = $Config['live_url_comment'] ?? 0;
     $txtCommentEnabled = $Config['live_url_comment'] === 1 || $Config['live_url_comment'] === 3 ?? 0;
     $m3uCommentEnabled = $Config['live_url_comment'] === 2 || $Config['live_url_comment'] === 3 ?? 0;
-    $ku9SecondaryGrouping = $Config['ku9_secondary_grouping'] ?? 0;
 
     // 读取 template.json 文件内容
     $templateContent = '';
@@ -870,7 +860,9 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
         $templateContent = isset($json[$liveSourceConfig]) ? implode("\n", (array)$json[$liveSourceConfig]) : '';
     }
     $templateExist = $templateContent !== '';
-    
+    $liveTemplateEnable = ($Config['live_template_enable'] ?? 1) && $templateExist;
+    $ku9SecondaryGrouping = ($Config['ku9_secondary_grouping'] ?? 0) && $fileName === 'tv' && !$liveTemplateEnable;
+
     $m3uContent = "#EXTM3U x-tvg-url=\"\"\n";
     $gen_live_update_time = $Config['gen_live_update_time'] ?? false;
     $updateTime = date('Y-m-d H:i:s');
@@ -891,10 +883,11 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
     $unnamedCounter = 1;
     if ($ku9SecondaryGrouping) {
         foreach ($channelData as &$row) {
-            $key = ($row['source'] ?? '') . '|' . ($row['groupPrefix'] ?? '');
+            $groupPrefix = $row['groupPrefix'] ?? '';
+            $key = ($row['source'] ?? '') . '|' . $groupPrefix;
             if (!isset($sourcePrefixMap[$key])) {
-                if (!empty($row['groupPrefix'])) {
-                    $sourcePrefixMap[$key] = trim($row['groupPrefix']);
+                if (!empty($groupPrefix)) {
+                    $sourcePrefixMap[$key] = trim($groupPrefix);
                 } else {
                     $sourcePrefixMap[$key] = "未命名{$unnamedCounter}";
                     $unnamedCounter++;
@@ -904,8 +897,10 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
         }
         unset($row);
     }
+
+    $processedChannelData = []; // 记录处理过的节目数据
     
-    if ($fileName === 'tv' && ($Config['live_template_enable'] ?? 1) && $templateExist && !$saveOnly) {
+    if ($fileName === 'tv' && $liveTemplateEnable && !$saveOnly) {
         // 处理有模板且开启的情况
         $templateGroups = [];
 
@@ -945,25 +940,27 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                         'source'      => $source
                     ] = $row;
 
+                    $matchGroupTitle = $groupPrefix . $groupTitle;
                     if ((!empty($groupInfo['source']) && !in_array($source, $groupInfo['source'])) || ($templateGroupTitle !== 'default' && 
-                        (empty($groupTitle) || stripos($groupTitle, $templateGroupTitle) === false && stripos($templateGroupTitle, $groupTitle) === false))) {
+                        (empty($matchGroupTitle) || stripos($matchGroupTitle, $templateGroupTitle) === false && stripos($templateGroupTitle, $matchGroupTitle) === false))) {
                         continue;
                     }
 
                     // 更新信息
                     $extInfOptStr = extractExtInfOpt($streamUrl);
                     $m3uStreamUrl = $streamUrl . (($m3uCommentEnabled && strpos($streamUrl, '$') === false) ? "\${$groupTitle}" : "");
-                    $rowGroupTitle = $templateGroupTitle === 'default' ? $groupTitle : $templateGroupTitle;
-                    
-                    // 如果关闭 ku9SecondaryGrouping，将 groupPrefix 信息追加到 groupTitle
-                    if (!$ku9SecondaryGrouping && $groupPrefix && strpos($rowGroupTitle, $groupPrefix) !== 0) {
-                        $rowGroupTitle = $groupPrefix . $rowGroupTitle;
-                    }
-                    
+                    $rowGroupTitle = $templateGroupTitle === 'default' ? $groupPrefix . $groupTitle : $templateGroupTitle;
                     $row['groupTitle'] = $rowGroupTitle;
-                    $newChannelData[] = $row;
+                    $row['groupPrefix'] = ''; // 使用模板时清除分组前缀
 
-                    if ($disable) continue;
+                    // 过滤重复数据
+                    $channelKey = $rowGroupTitle . $channelName . $streamUrl;
+                    if (!isset($processedChannelData[$channelKey]) && !$disable) {
+                        $processedChannelData[$channelKey] = true;
+                        $newChannelData[] = $row;
+                    } else {
+                        continue;
+                    }
 
                     // 生成 M3U 内容
                     $extInfLine = "#EXTINF:-1" . 
@@ -1016,18 +1013,20 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                             // 更新信息
                             $extInfOptStr = extractExtInfOpt($streamUrl);
                             $m3uStreamUrl = $streamUrl . (($m3uCommentEnabled && strpos($streamUrl, '$') === false) ? "\${$groupTitle}" : "");
-                            $rowGroupTitle = $templateGroupTitle === 'default' ? $groupTitle : $templateGroupTitle;
-                            
-                            // 如果关闭 ku9SecondaryGrouping，将 groupPrefix 信息追加到 groupTitle
-                            if (!$ku9SecondaryGrouping && $groupPrefix && strpos($rowGroupTitle, $groupPrefix) !== 0) {
-                                $rowGroupTitle = $groupPrefix . $rowGroupTitle;
-                            }
-                            
+                            $rowGroupTitle = $templateGroupTitle === 'default' ? $groupPrefix . $groupTitle : $templateGroupTitle;
                             $row['groupTitle'] = $rowGroupTitle;
-                            $row['channelName'] = strpos($groupChannelName, 'regex:') === 0 ? $channelName : $groupChannelName; // 正则表达式使用原频道名
-                            $newChannelData[] = $row;
+                            $finalChannelName = strpos($groupChannelName, 'regex:') === 0 ? $channelName : $groupChannelName; // 正则表达式使用原频道名
+                            $row['channelName'] = $finalChannelName;
+                            $row['groupPrefix'] = ''; // 使用模板时清除分组前缀
 
-                            if ($disable) continue;
+                            // 过滤重复数据
+                            $channelKey = $rowGroupTitle . $finalChannelName . $streamUrl;
+                            if (!isset($processedChannelData[$channelKey]) && !$disable) {
+                                $processedChannelData[$channelKey] = true;
+                                $newChannelData[] = $row;
+                            } else {
+                                continue;
+                            }
 
                             // 生成 M3U 内容
                             $extInfLine = "#EXTINF:-1" . 
@@ -1037,7 +1036,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                                 ($ku9SecondaryGrouping ? " category=\"{$row['category']}\"" : "") . 
                                 " group-title=\"$rowGroupTitle\"" . 
                                 $extInfOptStr . "," . 
-                                $row['channelName']; // 使用 $groupChannels 中的名称
+                                $finalChannelName;
 
                             $m3uContent .= $extInfLine . "\n" . $m3uStreamUrl . "\n";
                         }
@@ -1059,13 +1058,20 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                 'tvgName'     => $tvgName,
                 'disable'     => $disable
             ] = $row;
-            if ($disable) continue;
-    
+
+            // 过滤重复数据
+            $channelKey = $groupPrefix . $groupTitle . $channelName . $streamUrl;
+            if (!isset($processedChannelData[$channelKey]) && !$disable) {
+                $processedChannelData[$channelKey] = true;
+            } else {
+                continue;
+            }
+            
             // 提取 #EXTINFOPT 行内容
             $extInfOptStr = extractExtInfOpt($streamUrl);
 
             // 如果关闭 ku9SecondaryGrouping，将 groupPrefix 信息追加到 groupTitle
-            if (!$ku9SecondaryGrouping && $groupPrefix && $finalGroupTitle && strpos($finalGroupTitle, $groupPrefix) !== 0) {
+            if (!$ku9SecondaryGrouping && $fileName === 'tv' && $groupPrefix && $groupTitle) {
                 $groupTitle = $groupPrefix . $groupTitle;
             }
 
@@ -1113,7 +1119,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
         if ($ku9SecondaryGrouping) {
             $genre = $groupTitle ?: '未分组';
         } else {
-            $genre = ($groupPrefix  && strpos($groupTitle, $groupPrefix ) !== 0 ? $groupPrefix  : '') . $groupTitle ?: '未分组';
+            $genre = ($fileName === 'tv' && $groupPrefix ? $groupPrefix  : '') . $groupTitle ?: '未分组';
         }
 
         // 提取 UA 和 Referrer
@@ -1130,11 +1136,11 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
 
         // 取最后一行 URL
         $parts = explode("\n", $streamUrl);
-        $streamUrl = end($parts);
+        $rawUrl = end($parts);
 
-        $txtStreamUrl = (!empty($txtCommentEnabled) && strpos($streamUrl, '$') === false)
-            ? $streamUrl . "\${$groupTitle}"
-            : $streamUrl;
+        $txtStreamUrl = (!empty($txtCommentEnabled) && strpos($rawUrl, '$') === false)
+            ? $rawUrl . "\${$groupTitle}"
+            : $rawUrl;
 
         if ($ku9SecondaryGrouping) {
             $groupedData[$row['category']][$genre][] = $channelName . ',' . $txtStreamUrl;
