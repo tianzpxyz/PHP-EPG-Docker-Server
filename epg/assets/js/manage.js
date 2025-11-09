@@ -1,12 +1,10 @@
 // 页面加载时预加载数据，减少等待时间
 document.addEventListener('DOMContentLoaded', function() {
     // 新用户弹出使用说明
-    if ((!document.getElementById('xml_urls')?.value.trim()) &&
-        document.getElementById('start_time').value === '00:00' &&
-        document.getElementById('end_time').value === '23:59' &&
-        document.getElementById('interval_hour').value === '6' &&
-        document.getElementById('interval_minute').value === '0') {
+    if (!localStorage.getItem('hasVisitedBefore') && 
+        (!document.getElementById('xml_urls')?.value.trim())) {
         showHelpModal();
+        localStorage.setItem('hasVisitedBefore', 'true');
     }
 
     showModal('live', popup = false);
@@ -1671,17 +1669,33 @@ async function parseSource() {
 
     // 处理 m3u 、 txt 文件内容
     text.split('\n').forEach(line => {
-        if (line && !/^http/i.test(line) && !/#genre#/i.test(line) && !/#extm3u/i.test(line)) {
-            if (/^#extinf:/i.test(line)) {
-                const tvgIdMatch = line.match(/tvg-id="([^"]+)"/i);
-                const tvgNameMatch = line.match(/tvg-name="([^"]+)"/i);
+        line = line.trim();
+        if (!line) return;
 
-                channelName = (tvgIdMatch && /\D/.test(tvgIdMatch[1]) ? tvgIdMatch[1] : tvgNameMatch ? tvgNameMatch[1] : line.split(',').slice(-1)[0]).trim();
-            } else {
-                channelName = line.split(',')[0].trim();
-            }
-            if (channelName) channels.add(channelName.toUpperCase());
+        // 匹配任意协议的 URL
+        if (/^[a-z][a-z0-9+\-.]*:\/\//i.test(line)) return;
+        
+        // # 开头 → 只允许 #EXTINF，其他全部跳过
+        if (line.startsWith('#') && !/^#EXTINF:/i.test(line)) return;
+        
+        if (/^#EXTINF:/i.test(line)) {
+            const tvgIdMatch = line.match(/tvg-id="([^"]+)"/i);
+            const tvgNameMatch = line.match(/tvg-name="([^"]+)"/i);
+            
+            channelName = (
+                tvgIdMatch && /\D/.test(tvgIdMatch[1])
+                    ? tvgIdMatch[1]
+                    : tvgNameMatch
+                        ? tvgNameMatch[1]
+                        : line.split(',').slice(-1)[0]
+            ).trim();
+            
+        } else {
+            // TXT 格式行：频道名在逗号前
+            channelName = line.split(',')[0].trim();
         }
+        
+        if (channelName) channels.add(channelName);
     });
 
     // 将解析后的频道列表放回文本区域
