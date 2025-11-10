@@ -17,7 +17,7 @@ KEY_FILE="${KEY_FILE:-/etc/ssl/private/server.key}"
 
 echo 'Updating configurations'
 
-# Check and install ffmpeg if ENABLE_FFMPEG is set to true
+# Optional ffmpeg installation
 if [ "$ENABLE_FFMPEG" = "true" ]; then
     echo "Using USTC mirror for package installation..."
     sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
@@ -31,13 +31,10 @@ else
     echo "Skipping ffmpeg installation."
 fi
 
-# If https is enabled, certificate files must exist
+# Validate certificate files for HTTPS
 if [ "$ENABLE_HTTPS" = "true" ]; then
     if [ ! -f "$CERT_FILE" ] || [ ! -f "$KEY_FILE" ]; then
         echo "ERROR: ENABLE_HTTPS=true but certificate files not found!"
-        echo "CERT_FILE=$CERT_FILE"
-        echo "KEY_FILE=$KEY_FILE"
-        echo "Please mount certificates with -v."
         exit 1
     fi
 fi
@@ -48,6 +45,7 @@ echo "Generating Nginx configuration..."
 cat <<'EOF' > /etc/nginx/common-locations.conf
 autoindex off;
 
+# Block /data except icon directory
 location ^~ /data/ {
     deny all;
 }
@@ -55,37 +53,52 @@ location ^~ /data/icon/ {
     allow all;
 }
 
+# Rewrite endpoints
+location = / { rewrite ^ /index.php?$query_string last; }
 location = /tv.m3u { rewrite ^ /index.php?type=m3u&$query_string last; }
 location = /tv.txt { rewrite ^ /index.php?type=txt&$query_string last; }
 location = /t.xml { rewrite ^ /index.php?type=xml&$query_string last; }
 location = /t.xml.gz { rewrite ^ /index.php?type=gz&$query_string last; }
 
+# PHP FastCGI
 location ~ \.php$ {
     include fastcgi_params;
     fastcgi_pass 127.0.0.1:9000;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
     fastcgi_index index.php;
+    fastcgi_read_timeout 300s;
+    fastcgi_send_timeout 300s;
 }
+
+# Allow larger uploads
+client_max_body_size 100M;
 EOF
 
+
+# Use /tmp for all temporary files
+if ! grep -q "nginx-client-body" /etc/nginx/nginx.conf; then
+    sed -i '/http {/a \
+    client_body_temp_path /tmp/nginx-client-body;\n\
+    fastcgi_temp_path /tmp/nginx-fastcgi;\n\
+    proxy_temp_path /tmp/nginx-proxy;\n\
+    uwsgi_temp_path /tmp/nginx-uwsgi;\n\
+    scgi_temp_path /tmp/nginx-scgi;\n\
+    ' /etc/nginx/nginx.conf
+fi
 
 # Build Nginx server blocks
 if [ "$ENABLE_HTTPS" = "true" ]; then
 
-    # HTTP server
     if [ "$FORCE_HTTPS" = "true" ]; then
-        # 80 redirect to https
-        cat <<EOF > /etc/nginx/http.d/default.conf
+cat <<EOF > /etc/nginx/http.d/default.conf
 server {
     listen ${HTTP_PORT};
     server_name ${SERVER_NAME};
-
     return 301 https://\$host\$request_uri;
 }
 EOF
     else
-        # Normal http
-        cat <<EOF > /etc/nginx/http.d/default.conf
+cat <<EOF > /etc/nginx/http.d/default.conf
 server {
     listen ${HTTP_PORT};
     server_name ${SERVER_NAME};
@@ -99,8 +112,8 @@ server {
 EOF
     fi
 
-    # HTTPS server block
-    cat <<EOF >> /etc/nginx/http.d/default.conf
+# HTTPS block
+cat <<EOF >> /etc/nginx/http.d/default.conf
 
 server {
     listen ${HTTPS_PORT} ssl;
@@ -120,8 +133,8 @@ EOF
 
 else
 
-    # HTTP only
-    cat <<EOF > /etc/nginx/http.d/default.conf
+# HTTP only
+cat <<EOF > /etc/nginx/http.d/default.conf
 server {
     listen ${HTTP_PORT};
     server_name ${SERVER_NAME};
@@ -137,15 +150,17 @@ EOF
 fi
 
 
-# Modify php memory limit, timezone and file size limit
+# Apply PHP settings
 sed -i "s/memory_limit = .*/memory_limit = ${PHP_MEMORY_LIMIT}/" /etc/php83/php.ini
 sed -i "s#^;date.timezone =\$#date.timezone = \"${TZ}\"#" /etc/php83/php.ini
 sed -i "s/upload_max_filesize = .*/upload_max_filesize = 100M/" /etc/php83/php.ini
 sed -i "s/post_max_size = .*/post_max_size = 100M/" /etc/php83/php.ini
+
+# Run PHP-FPM as nginx user
 sed -i 's/^user = .*/user = nginx/' /etc/php83/php-fpm.d/www.conf
 sed -i 's/^group = .*/group = nginx/' /etc/php83/php-fpm.d/www.conf
 
-# Modify system timezone
+# Set system timezone
 if [ -e /etc/localtime ]; then rm -f /etc/localtime; fi
 ln -s /usr/share/zoneinfo/${TZ} /etc/localtime
 
@@ -157,7 +172,7 @@ chown -R nginx:nginx /htdocs
 # Change session directory permissions
 chmod 1733 /tmp
 
-# Start cron.php if exists
+# Run cron.php as nginx user
 if [ -f /htdocs/cron.php ]; then
     cd /htdocs
     su -s /bin/sh -c "php cron.php &" "nginx"
