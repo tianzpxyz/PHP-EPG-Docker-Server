@@ -135,7 +135,7 @@ function getGenList($db) {
         return ['gen_list_mapping' => [], 'gen_list' => []];
     }
 
-    $channelsSimplified = explode("\n", t2s(implode("\n", $channels)));
+    $channelsSimplified = t2sBatch($channels);
     $allEpgChannels = $db->query("SELECT DISTINCT channel FROM epg_data WHERE date = DATE('now')")
         ->fetchAll(PDO::FETCH_COLUMN); // 避免匹配只有历史 EPG 的频道
 
@@ -290,8 +290,7 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
     }
 
     // 繁简转换和频道筛选
-    $simplifiedChannelNames = ($Config['cht_to_chs'] ?? 1) === 1 ? 
-        explode("\n", t2s(implode("\n", $cleanChannelNames))) : $cleanChannelNames;
+    $simplifiedChannelNames = ($Config['cht_to_chs'] ?? 1) === 1 ? t2sBatch($cleanChannelNames) : $cleanChannelNames;
     $channelNamesMap = [];
     foreach ($cleanChannelNames as $channelId => $channelName) {
         $channelNameSimplified = array_shift($simplifiedChannelNames);
@@ -553,6 +552,24 @@ function compressXmlFile($xmlFilePath) {
     gzclose($gzFile);
 }
 
+// Server酱消息接口
+function sc_send($title, $desp = '', $key = '[SENDKEY]', $tags = '', $short = '')
+{
+    $postdata = http_build_query([
+        'text'  => $title,
+        'desp'  => $desp,
+        'tags'  => $tags,   // SCTP 多标签用 | 分隔
+        'short' => $short,  // 消息卡片简短描述
+    ]);
+
+    $url = strpos($key, 'sctp') === 0
+        ? "https://" . preg_replace('/^sctp(\d+)t.*$/', '$1', $key) . ".push.ft07.com/send/{$key}.send"
+        : "https://sctapi.ftqq.com/{$key}.send";
+
+    list($response, $error) = downloadData($url, '', 10, 5, 1, $postdata);
+    return $response ?: '';
+}
+
 // 记录开始时间
 $startTime = microtime(true);
 
@@ -687,6 +704,26 @@ $endTime = microtime(true); // 记录结束时间
 $executionTime = round($endTime - $startTime, 1);
 echo "<br>";
 logMessage($log_messages, "【更新完成】 {$executionTime} 秒。节目数量：更新前 {$initialCount} 条，更新后 {$finalCount} 条。" . $msg);
+
+// 发送通知
+if ($Config['notify'] ?? false) {
+    $sckey = $Config['serverchan_key'] ?? '';
+    if (empty($sckey)) {
+        logMessage($log_messages, "【发送通知】 未设置 sckey，跳过发送");
+    } else {
+        $log_message_str = implode("\n\n", $log_messages) . "\n\nhttps://github.com/taksssss/iptv-tool";
+        $tag = 'IPTV工具箱';
+        $short = date('Y-m-d H:i:s') . '：' . (trim($msg) ?: '节目数无变化。');
+        $result = sc_send('定时任务日志', $log_message_str, $sckey, $tag, $short);
+        $resp = json_decode($result, true);
+        $errno = $resp['errno'] ?? $resp['data']['errno'] ?? 1;
+        if ($errno == 0) {
+            logMessage($log_messages, "【发送通知】 成功");
+        } else {
+            logMessage($log_messages, "【通知失败】 返回内容：" . json_encode($resp, JSON_UNESCAPED_UNICODE));
+        }
+    }
+}
 
 // 将日志信息写入数据库
 $log_message_str = implode("<br>", $log_messages);

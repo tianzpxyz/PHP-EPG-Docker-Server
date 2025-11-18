@@ -405,7 +405,7 @@
 
         <!-- 搜索框 -->
         <div>
-            <input type="text" id="liveSourceSearchInput" placeholder="搜索分组前缀、分组名称、频道名称、直播地址、tvg-id、tvg-name..." oninput="filterLiveSourceData()">
+            <input type="text" id="liveSourceSearchInput" placeholder="搜索分组前缀、分组名称、频道名称、直播地址、tvg-id、tvg-name...">
         </div>
 
         <!-- 表格显示解析结果 -->
@@ -803,6 +803,13 @@
         <!-- 第五行 -->
         <div class="row">
             <div class="column">
+                <label for="notify"><span class="blue-span" onclick="changeNotifyInfo()">消息通知</span>：</label>
+                <select id="notify" name="notify" required onchange="changeNotifyInfo()">
+                    <option value="0" <?php if (@$Config['notify'] == 0) echo 'selected'; ?>>关闭</option>
+                    <option value="serverchan" <?php if (@$Config['notify'] == 'serverchan') echo 'selected'; ?>>Server酱</option>
+                </select>
+            </div>
+            <div class="column">
                 <label for="debug_mode">调试模式：</label>
                 <select id="debug_mode" name="debug_mode" required onchange="debugMode(this)">
                     <option value="1" <?php if (@$Config['debug_mode'] == 1) echo 'selected'; ?>>是</option>
@@ -813,8 +820,6 @@
                 <a href="assets/tinyfilemanager/index.php?p=data&edit=customSource.php&env=ace" target="_blank" class="blue-span">
                     编辑自定义数据源
                 </a>
-            </div>
-            <div class="column">
             </div>
         </div>
 

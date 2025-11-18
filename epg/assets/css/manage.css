@@ -152,8 +152,7 @@ a:hover, .blue-span:hover {
 }
 
 .button-container a:hover, .button-container button:hover,
-.modal-content button:hover, input[type="submit"]:hover,
-#accessStatsTable th:hover {
+input[type="submit"]:hover, #accessStatsTable th:hover {
     background-color: #0b7dda;
 }
 
