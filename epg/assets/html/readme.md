@@ -59,6 +59,7 @@ Memcached：已移除相关设置，默认打开，缓存在更新数据时清�
 `URL #EXTVLCOPT={"http-user-agent":"xxx", "http-referrer":"xxx"}`（加入额外 `#EXTVLCOPT` 标签）  
 `URL #EXTINFOPT={"catchup":"xxx", "catchup-source":"xxx"}`（`#EXTINF` 标签加入额外信息）  
 `URL #PROXY=1/0`（强制开启/关闭代理）  
+`URL #T2S=1`（将频道名、分组名转换为简体中文）  
 选项对照表（任选其一即可）：`PF/prefix, UA/useragent, RP/replace, FT/filter`  
 多参数：`URL #PF=分组前缀 #UA=自定义UA`  
 在生成 m3u 文件时，「台标地址」、「tvg-id」、「tvg-name」字段可选  

@@ -200,6 +200,12 @@ function t2s($channel) {
     return OpenCC::convert($channel, 'TRADITIONAL_TO_SIMPLIFIED');
 }
 
+// 批量繁体转简体
+function t2sBatch($channels) {
+    $joined = implode("\x1E", $channels);
+    return explode("\x1E", t2s($joined));
+}
+
 // 台标模糊匹配
 function iconUrlMatch($channels, $getDefault = true) {
     global $Config, $iconListDefault, $iconListMerged, $serverUrl;
@@ -249,13 +255,13 @@ function iconUrlMatch($channels, $getDefault = true) {
 }
 
 // 下载文件
-function downloadData($url, $userAgent = '', $timeout = 120, $connectTimeout = 10, $retry = 3) {
+function downloadData($url, $userAgent = '', $timeout = 120, $connectTimeout = 10, $retry = 3, $postData = null) {
     $data = false;
     $error = '';
     $mtime = 0;
 
     $ch = curl_init($url);
-    curl_setopt_array($ch, [
+    $options = [
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => false,
         CURLOPT_RETURNTRANSFER => true,
@@ -269,7 +275,14 @@ function downloadData($url, $userAgent = '', $timeout = 120, $connectTimeout = 1
             'Accept: */*',
             'Connection: keep-alive'
         ]
-    ]);
+    ];
+
+    if ($postData !== null) {
+        $options[CURLOPT_POST] = true;
+        $options[CURLOPT_POSTFIELDS] = $postData;
+    }
+
+    curl_setopt_array($ch, $options);
 
     while ($retry--) {
         $response = curl_exec($ch);
@@ -286,9 +299,7 @@ function downloadData($url, $userAgent = '', $timeout = 120, $connectTimeout = 1
         // 获取 Last-Modified
         if (preg_match('/Last-Modified:\s*(.+)\r?\n/i', $headerStr, $matches)) {
             $parsed = strtotime(trim($matches[1]));
-            if ($parsed !== false) {
-                $mtime = $parsed;
-            }
+            if ($parsed !== false) $mtime = $parsed;
         }
 
         curl_close($ch);
@@ -494,7 +505,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
         $url = trim(str_replace('\#', '#', $parts[0]));
 
         // 初始化
-        $groupPrefix = $userAgent = $replacePattern = $extvlcoptPattern = $proxy = '';
+        $groupPrefix = $userAgent = $replacePattern = $extvlcoptPattern = $proxy = $t2sopt = '';
         $white_list = $black_list = $extInfOpt = [];
 
         foreach ($parts as $i => $part) {
@@ -525,7 +536,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
 
                 case 'ft':
                 case 'filter':
-                    $filter_raw = strtoupper(t2s(trim($value)));
+                    $filter_raw = t2s(trim($value));
                     $list = array_map('trim', explode(',', ltrim($filter_raw, '!')));
                     if (strpos($filter_raw, '!') === 0) {
                         $black_list = $list;
@@ -542,10 +553,6 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                         }
                     }
                     break;
-                    
-                case 'proxy':
-                    $proxy = (int)trim($value);
-                    break;
 
                 case 'extinfopt':
                     $jsonOpts = json_decode($value, true);
@@ -554,6 +561,14 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                             $extInfOpt[$k] = $v;
                         }
                     }
+                    break;
+
+                case 'proxy':
+                    $proxy = (int)trim($value);
+                    break;
+
+                case 't2s':
+                    $t2sopt = (int)trim($value);
                     break;
             }
         }
@@ -770,22 +785,23 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
             }
         }
 
-        // 将所有 channelName 整合到一起，统一调用 t2s 进行繁简转换
-        $channelNames = array_column($urlChannelData, 'channelName'); // 提取所有 channelName
-        $chsChannelNames = ($Config['cht_to_chs'] ?? 1) === 0 ? 
-            $channelNames : explode("\n", t2s(implode("\n", $channelNames))); // 繁简转换
+        // 将所有 channelName、groupTitle 整合到一起，进行繁简转换
+        $channelNames = array_column($urlChannelData, 'channelName');
+        $groupTitles = array_column($urlChannelData, 'groupTitle');
+        $chsChannelNames = t2sBatch($channelNames);
+        $chsGroupTitles = t2sBatch($groupTitles);
 
         // 将转换后的信息写回 urlChannelData
         foreach ($urlChannelData as $index => &$row) {
             // 如果不在白名单或在黑名单中，删除该行
             $chsChannelName = $chsChannelNames[$index];
-            $groupTitle = $row['groupTitle'];
+            $chsGroupTitle = $chsGroupTitles[$index];
             $streamUrl = $row['streamUrl'];
-            $in_white = empty($white_list) || array_filter($white_list, function ($w) use ($chsChannelName, $groupTitle, $streamUrl) {
-                return stripos($chsChannelName, $w) !== false || stripos($groupTitle, $w) !== false || stripos($streamUrl, $w) !== false;
+            $in_white = empty($white_list) || array_filter($white_list, function ($w) use ($chsChannelName, $chsGroupTitle, $streamUrl) {
+                return stripos($chsChannelName, $w) !== false || stripos($chsGroupTitle, $w) !== false || stripos($streamUrl, $w) !== false;
             });
-            $in_black = array_filter($black_list, function ($b) use ($chsChannelName, $groupTitle, $streamUrl) {
-                return stripos($chsChannelName, $b) !== false || stripos($groupTitle, $b) !== false || stripos($streamUrl, $b) !== false;
+            $in_black = !empty($black_list) && array_filter($black_list, function ($b) use ($chsChannelName, $chsGroupTitle, $streamUrl) {
+                return stripos($chsChannelName, $b) !== false || stripos($chsGroupTitle, $b) !== false || stripos($streamUrl, $b) !== false;
             });
             if (!$in_white || $in_black) {
                 unset($urlChannelData[$index]);
@@ -810,8 +826,9 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
             $finalChannelName = $dbChannelName ?: $cleanChannelName;
             $oriChannelName = $row['channelName'];
 
-            $row['channelName'] = $liveChannelNameProcess ? $finalChannelName : $row['channelName'];
+            $row['channelName'] = $liveChannelNameProcess ? $finalChannelName : ($t2sopt ? $chsChannelName : $row['channelName']);
             $row['chsChannelName'] = $chsChannelName;
+            $row['groupTitle'] = $t2sopt ? $chsGroupTitle : $row['groupTitle'];
             $row['iconUrl'] = ($row['iconUrl'] ?? false) && ($Config['m3u_icon_first'] ?? false)
                             ? $row['iconUrl']
                             : (iconUrlMatch([$cleanChannelName, $oriChannelName]) ?: $row['iconUrl']);
@@ -977,7 +994,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
             } else {
                 // 获取繁简转换后的模板频道名称
                 $groupChannels = $groupInfo['channels'];
-                $cleanChsGroupChannelNames = explode("\n", t2s(implode("\n", array_map('cleanChannelName', $groupChannels))));
+                $cleanChsGroupChannelNames = t2sBatch(array_map('cleanChannelName', $groupChannels));
 
                 // 如果指定了频道，先遍历 $groupChannels，保证顺序不变
                 foreach ($groupChannels as $index => $groupChannelName) {
