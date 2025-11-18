@@ -17,9 +17,9 @@ document.addEventListener('DOMContentLoaded', function() {
 document.getElementById('settingsForm').addEventListener('submit', function(event) {
     event.preventDefault();  // 阻止默认表单提交
 
-    const fields = ['update_config', 'gen_xml', 'include_future_only', 'ret_default', 'cht_to_chs', 
-        'db_type', 'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 'cached_type', 'gen_list_enable', 
-        'check_update', 'token_range', 'user_agent_range', 'debug_mode', 'target_time_zone', 'ip_list_mode', 'live_source_config', 
+    const fields = ['update_config', 'gen_xml', 'include_future_only', 'ret_default', 'cht_to_chs', 'db_type', 
+        'mysql_host', 'mysql_dbname', 'mysql_username', 'mysql_password', 'cached_type', 'gen_list_enable', 'check_update', 
+        'token_range', 'user_agent_range', 'notify', 'debug_mode', 'target_time_zone', 'ip_list_mode', 'live_source_config', 
         'live_template_enable', 'live_fuzzy_match', 'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 
         'live_tvg_name_enable', 'live_source_auto_sync', 'live_channel_name_process', 'gen_live_update_time', 'm3u_icon_first', 
         'ku9_secondary_grouping', 'check_ipv6', 'min_resolution_width', 'min_resolution_height', 'urls_limit','sort_by_delay', 
@@ -252,7 +252,16 @@ function showModal(type, popup = true, data = '') {
             break;
         case 'live':
             modal = document.getElementById("liveSourceManageModal");
-            fetchData('manage.php?get_live_data=true', updateLiveSourceModal);
+            // 重置数据并加载第一页
+            allLiveData = [];
+            filteredLiveData = [];
+            currentPage = 1;
+            window.liveDataMap = new Map();
+            window.loadedPages = new Set();
+            window.pageDataMap = new Map();
+            window.clientModifiedTags = new Set();
+            window.currentSearchKeyword = ''; // 清除搜索关键词
+            fetchData(`manage.php?get_live_data=true&page=1&per_page=${rowsPerPage}`, updateLiveSourceModal);
             break;
         case 'chekspeed':
             modal = document.getElementById("checkSpeedModal");
@@ -449,86 +458,184 @@ function changeCachedType(selectElem) {
     });
 }
 
+// 通用：将字段写入 config.json
+function saveConfigField(params) {
+    params.update_config_field = 'true';
+    return fetch('manage.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(params)
+    }).then(r => r.json());
+}
+
 // 更新并测试 Redis 账号信息
 async function saveAndTestRedisConfig() {
     try {
-      // 保存配置
-      await fetch('manage.php', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: new URLSearchParams({
-          update_config_field: 'true',
-          'redis[host]': document.getElementById('redis_host').value.trim(),
-          'redis[port]': document.getElementById('redis_port').value.trim(),
-          'redis[password]': document.getElementById('redis_password').value.trim()
-        })
-      });
+        // 保存配置
+        await saveConfigField({
+            'redis[host]': document.getElementById('redis_host').value.trim(),
+            'redis[port]': document.getElementById('redis_port').value.trim(),
+            'redis[password]': document.getElementById('redis_password').value.trim()
+        });
   
-      // 测试连接
-      const res = await fetch('manage.php?test_redis=true');
-      const data = await res.json();
-  
-      document.getElementById('cached_type').value = data.success ? 'redis' : 'memcached';
-      showMessageModal(data.success ? '配置已保存，Redis 连接成功' : 'Redis 连接失败，已恢复为 Memcached');
+        // 测试连接
+        const res = await fetch('manage.php?test_redis=true');
+        const data = await res.json();
+    
+        document.getElementById('cached_type').value = data.success ? 'redis' : 'memcached';
+        showMessageModal(data.success ? '配置已保存，Redis 连接成功' : 'Redis 连接失败，已恢复为 Memcached');
     } catch {
-      document.getElementById('cached_type').value = 'memcached';
-      showMessageModal('请求失败，已恢复为 Memcached');
+        document.getElementById('cached_type').value = 'memcached';
+        showMessageModal('请求失败，已恢复为 Memcached');
     }
 }
 
-let lastOffset = 0, timer = null;
+let accessLogMinId = 0, accessLogMaxId = 0, accessLogTimer = null, isLoadingOlderLogs = false;
 
 // 显示访问日志
 function showAccessLogModal() {
     const box = document.getElementById("accessLogContent");
     const modal = document.getElementById("accesslogModal");
-
-    const load = () => {
-        fetch(`manage.php?get_access_log=true&offset=${lastOffset}`)
+    
+    // 重置状态
+    accessLogMinId = 0;
+    accessLogMaxId = 0;
+    isLoadingOlderLogs = false;
+    
+    // 初始加载最新100条
+    const loadInitial = () => {
+        fetch('manage.php?get_access_log=true&limit=100')
             .then(r => r.json())
             .then(d => {
                 if (!d.success) return;
-
-                const pre = box.querySelector("pre");
-                if (!pre) {
-                    box.innerHTML = `<pre>${highlightIPs(d.content || "")}</pre><div>持续刷新中...</div>`;
-                    box.scrollTop = box.scrollHeight;
-                } else if (d.changed && d.content) {
-                    const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
-                    pre.innerHTML += highlightIPs(d.content);
-                    if (atBottom) box.scrollTop = box.scrollHeight;
+                
+                let content = '';
+                if (d.logs && d.logs.length > 0) {
+                    d.logs.forEach(log => {
+                        content += highlightIPs(log.text) + '\n';
+                    });
+                    accessLogMinId = d.min_id;
+                    accessLogMaxId = d.max_id;
                 }
-
-                lastOffset = d.offset;
-                if (!timer) timer = setInterval(load, 1000);
+                
+                const hasMoreIndicator = d.has_more ? '<div id="loadMoreLogs" style="text-align:center;padding:10px;cursor:pointer;color:#888;">向上滚动加载更早的日志...</div>' : '';
+                box.innerHTML = hasMoreIndicator + `<pre id="accessLogPre">${content}</pre><div>持续监听新日志中...</div>`;
+                box.scrollTop = box.scrollHeight; // 滚动到底部
+                
+                // 开始轮询新日志
+                if (!accessLogTimer) {
+                    accessLogTimer = setInterval(pollNewLogs, 1000);
+                }
             });
     };
-
+    
+    // 轮询新日志
+    const pollNewLogs = () => {
+        if (accessLogMaxId === 0) return;
+        
+        fetch(`manage.php?get_access_log=true&after_id=${accessLogMaxId}`)
+            .then(r => r.json())
+            .then(d => {
+                if (!d.success || !d.changed || !d.logs || d.logs.length === 0) return;
+                
+                const pre = document.getElementById('accessLogPre');
+                if (!pre) return;
+                
+                const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 50;
+                
+                let newContent = '';
+                d.logs.forEach(log => {
+                    newContent += highlightIPs(log.text) + '\n';
+                });
+                
+                pre.innerHTML += newContent;
+                accessLogMaxId = d.max_id;
+                
+                // 如果用户在底部，自动滚动
+                if (atBottom) {
+                    box.scrollTop = box.scrollHeight;
+                }
+            });
+    };
+    
+    // 加载更早的日志
+    const loadOlderLogs = () => {
+        if (isLoadingOlderLogs || accessLogMinId === 0) return;
+        
+        const loadMoreDiv = document.getElementById('loadMoreLogs');
+        if (!loadMoreDiv) return;
+        
+        isLoadingOlderLogs = true;
+        loadMoreDiv.textContent = '加载中...';
+        
+        fetch(`manage.php?get_access_log=true&before_id=${accessLogMinId}&limit=100`)
+            .then(r => r.json())
+            .then(d => {
+                if (!d.success || !d.logs || d.logs.length === 0) {
+                    loadMoreDiv.textContent = '没有更早的日志了';
+                    isLoadingOlderLogs = false;
+                    return;
+                }
+                
+                const pre = document.getElementById('accessLogPre');
+                if (!pre) return;
+                
+                const oldScrollHeight = box.scrollHeight;
+                
+                let olderContent = '';
+                d.logs.forEach(log => {
+                    olderContent += highlightIPs(log.text) + '\n';
+                });
+                
+                pre.innerHTML = olderContent + pre.innerHTML;
+                accessLogMinId = d.min_id;
+                
+                // 保持滚动位置
+                box.scrollTop = box.scrollHeight - oldScrollHeight;
+                
+                if (!d.has_more) {
+                    loadMoreDiv.textContent = '没有更早的日志了';
+                } else {
+                    loadMoreDiv.textContent = '向上滚动加载更早的日志...';
+                }
+                
+                isLoadingOlderLogs = false;
+            });
+    };
+    
+    // 监听滚动事件，接近顶部时加载更早日志
+    box.onscroll = () => {
+        if (box.scrollTop < 100) {
+            loadOlderLogs();
+        }
+    };
+    
     modal.style.zIndex = zIndex++;
     modal.style.display = "block";
-    load();
+    loadInitial();
 
     modal.onmousedown = e => {
         if (e.target === modal || e.target.classList.contains("close")) {
             modal.style.display = "none";
-            clearInterval(timer);
-            timer = null;
+            clearInterval(accessLogTimer);
+            accessLogTimer = null;
+            box.onscroll = null;
         }
     };
 }
 
 // 把文本里的 IP 转成可点击链接
 function highlightIPs(text) {
-    const ipRegex = /\b\d{1,3}(?:\.\d{1,3}){3}\b/g;
-    return text.replace(ipRegex, ip => {
-        return `<a href="#" onclick="queryIpLocation('${ip}', true); return false;">${ip}</a>`;
+    const ipRegex = /\[(\d{1,3}(?:\.\d{1,3}){3})\]/g;
+    return text.replace(ipRegex, (match, ip) => {
+        return `[<a href="#" onclick="queryIpLocation('${ip}', true); return false;">${ip}</a>]`;
     });
 }
 
 // 访问日志统计
 function showAccessStats() {
-    clearInterval(timer);
-    timer = null;
+    clearInterval(accessLogTimer);
+    accessLogTimer = null;
     const modal = document.getElementById("accessStatsModal");
     modal.style.zIndex = zIndex++;
     modal.style.display = "block";
@@ -660,14 +767,32 @@ function queryIpLocation(ip, showModal = false) {
 }
 
 function filterLogByIp(ip) {
-    const logContent = document.getElementById("accessLogContent").innerText || '';
-    const lines = logContent.split('\n').filter(line => line.includes(ip));
-    const filtered = lines.length > 0 ? lines.map(line => line.trimEnd()).join('\n') : `无记录：${ip}`;
-    showMessageModal(`
-        <div id="filteredLog" style="width:1000px; height:504px; overflow:auto; font-family:monospace; white-space:pre;">${filtered.replace(/\n/g, '<br>')}</div>
-    `);
-    const d = document.getElementById("filteredLog");
-    if (d) d.scrollTop = d.scrollHeight;
+    // 从服务器获取该IP的所有日志
+    fetch(`manage.php?filter_access_log_by_ip=true&ip=${encodeURIComponent(ip)}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                showMessageModal(`查询失败：${data.message || '未知错误'}`);
+                return;
+            }
+            
+            let content = '';
+            if (data.logs && data.logs.length > 0) {
+                content = data.logs.map(log => log.text).join('<br>');
+            } else {
+                content = `无记录：${ip}`;
+            }
+            
+            showMessageModal(`
+                <div style="text-align:left; margin-bottom:10px;">IP: ${ip} - 共 ${data.count} 条记录</div>
+                <div id="filteredLog" style="width:1000px; height:504px; overflow:auto; font-family:monospace; white-space:pre;">${content}</div>
+            `);
+            const d = document.getElementById("filteredLog");
+            if (d) d.scrollTop = d.scrollHeight;
+        })
+        .catch(error => {
+            showMessageModal(`查询出错：${error}`);
+        });
 }
 
 function addIp(ip, type) {
@@ -739,14 +864,7 @@ function downloadAccessLog() {
 function showIpModal() {
     const mode = document.getElementById('ip_list_mode').value;
     
-    fetch('manage.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            update_config_field: 'true',
-            ip_list_mode: mode
-        })
-    });
+    saveConfigField({ ip_list_mode: mode });
 
     if (mode === '0') return;
     const file = (mode === '1' ? 'ipWhiteList.txt' : 'ipBlackList.txt');
@@ -896,11 +1014,19 @@ function displayPage(data, page) {
     const tableBody = document.querySelector('#liveSourceTable tbody');
     tableBody.innerHTML = ''; // 清空表格内容
 
-    const start = (page - 1) * rowsPerPage;
-    const end = Math.min(start + rowsPerPage, data.length);
+    // 如果需要的数据不在本地缓存中，从服务器加载
+    if (data === filteredLiveData && !isPageDataLoaded(page)) {
+        loadPageDataFromServer(page);
+        return;
+    }
+    
+    // 从pageDataMap获取当前页的数据
+    const displayData = window.pageDataMap && window.pageDataMap.get(page) 
+        ? window.pageDataMap.get(page) 
+        : [];
 
-    if (data.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="11">暂无数据</td></tr>';
+    if (displayData.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="12">暂无数据</td></tr>';
         return;
     }
 
@@ -909,11 +1035,17 @@ function displayPage(data, page) {
                     'tvgId', 'tvgName', 'resolution', 'speed', 'disable', 'modified'];
 
     // 填充当前页的表格数据
-    data.slice(start, end).forEach((item, index) => {
+    displayData.forEach((item, index) => {
         const row = document.createElement('tr');
         
+        // 计算全局索引（用于行号显示）
+        const globalIndex = (page - 1) * rowsPerPage + index + 1;
+        
+        // 检查该项是否在客户端被修改过
+        const isClientModified = window.clientModifiedTags && window.clientModifiedTags.has(item.tag);
+        
         row.innerHTML = `
-            <td>${start + index + 1}</td>
+            <td>${globalIndex}</td>
             ${columns.map((col, columnIndex) => {
                 let cellContent = String(item[col] || '').replace(/&/g, "&amp;");
                 let cellClass = '';
@@ -940,12 +1072,38 @@ function displayPage(data, page) {
         // 为每个单元格添加事件监听器
         row.querySelectorAll('td[contenteditable="true"]').forEach((cell, columnIndex) => {
             cell.addEventListener('input', () => {
-                const currentIndex = (currentPage - 1) * rowsPerPage + index;
-                const item = filteredLiveData[currentIndex]; // 当前点击的数据
-                const dataIndex = allLiveData.findIndex(d => d.tag === item.tag);
-                if (dataIndex < allLiveData.length) {
-                    allLiveData[dataIndex][columns[columnIndex]] = cell.textContent.trim();
-                    allLiveData[dataIndex]['modified'] = 1; // 标记修改位
+                // 直接使用item而不是通过索引查找
+                if (item && item.tag) {
+                    // 标记为客户端修改
+                    if (window.clientModifiedTags) {
+                        window.clientModifiedTags.add(item.tag);
+                    }
+                    
+                    // 更新allLiveData中的对应项
+                    const dataIndex = allLiveData.findIndex(d => d.tag === item.tag);
+                    if (dataIndex >= 0) {
+                        allLiveData[dataIndex][columns[columnIndex]] = cell.textContent.trim();
+                        allLiveData[dataIndex]['modified'] = 1;
+                    }
+                    
+                    // 更新Map
+                    if (window.liveDataMap) {
+                        const mapItem = window.liveDataMap.get(item.tag);
+                        if (mapItem) {
+                            mapItem[columns[columnIndex]] = cell.textContent.trim();
+                            window.liveDataMap.set(item.tag, mapItem);
+                        }
+                    }
+                    
+                    // 更新pageDataMap中当前页的数据
+                    if (window.pageDataMap && window.pageDataMap.has(currentPage)) {
+                        const pageData = window.pageDataMap.get(currentPage);
+                        const pageItemIndex = pageData.findIndex(d => d.tag === item.tag);
+                        if (pageItemIndex >= 0) {
+                            pageData[pageItemIndex][columns[columnIndex]] = cell.textContent.trim();
+                        }
+                    }
+                    
                     const lastCell = cell.closest('tr').lastElementChild;
                     lastCell.textContent = '是';
                     lastCell.classList.add('table-cell-modified');
@@ -956,24 +1114,83 @@ function displayPage(data, page) {
         // 为 disable 和 modified 列添加点击事件，切换 "是/否"
         row.querySelectorAll('td.table-cell-clickable').forEach((cell, columnIndex) => {
             cell.addEventListener('click', () => {
-                const currentIndex = (currentPage - 1) * rowsPerPage + index;
-                const item = filteredLiveData[currentIndex]; // 当前点击的数据
-                const dataIndex = allLiveData.findIndex(d => d.tag === item.tag);
-                if (dataIndex < allLiveData.length) {
+                // 直接使用item而不是通过索引查找
+                if (item && item.tag) {
                     const isDisable = columnIndex === 0;
-                    const field = isDisable ? 'disable' : 'modified';
-                    const newValue = allLiveData[dataIndex][field] == 1 ? 0 : 1;
-                    allLiveData[dataIndex][field] = newValue;
-                    cell.textContent = newValue == 1 ? '是' : '否';
-
-                    if (isDisable) {
-                        cell.classList.toggle('table-cell-disable', newValue == 1);
-                        allLiveData[dataIndex]['modified'] = 1; // 标记修改位
-                        const lastCell = cell.closest('tr').lastElementChild;
-                        lastCell.textContent = '是';
-                        lastCell.classList.add('table-cell-modified');
-                    } else {
-                        cell.classList.toggle('table-cell-modified', newValue == 1);
+                    const isModified = columnIndex === 1;
+                    
+                    if (isModified) {
+                        // 修改列：切换数据库的modified字段，并同步客户端修改标记
+                        const dataIndex = allLiveData.findIndex(d => d.tag === item.tag);
+                        if (dataIndex >= 0) {
+                            const newValue = allLiveData[dataIndex]['modified'] == 1 ? 0 : 1;
+                            allLiveData[dataIndex]['modified'] = newValue;
+                            
+                            // 更新Map
+                            if (window.liveDataMap) {
+                                const mapItem = window.liveDataMap.get(item.tag);
+                                if (mapItem) {
+                                    mapItem['modified'] = newValue;
+                                    window.liveDataMap.set(item.tag, mapItem);
+                                }
+                            }
+                            
+                            // 更新pageDataMap
+                            if (window.pageDataMap && window.pageDataMap.has(currentPage)) {
+                                const pageData = window.pageDataMap.get(currentPage);
+                                const pageItemIndex = pageData.findIndex(d => d.tag === item.tag);
+                                if (pageItemIndex >= 0) {
+                                    pageData[pageItemIndex]['modified'] = newValue;
+                                }
+                            }
+                            
+                            // 标记为客户端修改
+                            if (window.clientModifiedTags) {
+                                window.clientModifiedTags.add(item.tag);
+                            }
+                            
+                            cell.textContent = newValue == 1 ? '是' : '否';
+                            cell.classList.toggle('table-cell-modified', newValue == 1);
+                        }
+                    } else if (isDisable) {
+                        // Disable列：更新数据库字段并标记为客户端修改
+                        const dataIndex = allLiveData.findIndex(d => d.tag === item.tag);
+                        if (dataIndex >= 0) {
+                            const newValue = allLiveData[dataIndex]['disable'] == 1 ? 0 : 1;
+                            allLiveData[dataIndex]['disable'] = newValue;
+                            allLiveData[dataIndex]['modified'] = 1;
+                            
+                            // 更新Map
+                            if (window.liveDataMap) {
+                                const mapItem = window.liveDataMap.get(item.tag);
+                                if (mapItem) {
+                                    mapItem['disable'] = newValue;
+                                    window.liveDataMap.set(item.tag, mapItem);
+                                }
+                            }
+                            
+                            // 更新pageDataMap
+                            if (window.pageDataMap && window.pageDataMap.has(currentPage)) {
+                                const pageData = window.pageDataMap.get(currentPage);
+                                const pageItemIndex = pageData.findIndex(d => d.tag === item.tag);
+                                if (pageItemIndex >= 0) {
+                                    pageData[pageItemIndex]['disable'] = newValue;
+                                }
+                            }
+                            
+                            cell.textContent = newValue == 1 ? '是' : '否';
+                            cell.classList.toggle('table-cell-disable', newValue == 1);
+                            
+                            // 标记为客户端修改
+                            if (window.clientModifiedTags) {
+                                window.clientModifiedTags.add(item.tag);
+                            }
+                            
+                            const lastCell = cell.closest('tr').lastElementChild;
+                            lastCell.textContent = '是';
+                            allLiveData[dataIndex]['modified'] = 1;
+                            lastCell.classList.add('table-cell-modified');
+                        }
                     }
                 }
             });
@@ -997,12 +1214,45 @@ function displayPage(data, page) {
     })
 }
 
+// 检查某一页的数据是否已加载到本地缓存
+function isPageDataLoaded(page) {
+    return window.loadedPages && window.loadedPages.has(page);
+}
+
+// 从服务器加载指定页的数据
+function loadPageDataFromServer(page) {
+    const selectedConfig = document.getElementById('live_source_config').value;
+    const tableBody = document.querySelector('#liveSourceTable tbody');
+    tableBody.innerHTML = '<tr><td colspan="12">加载中...</td></tr>';
+    
+    currentPage = page; // 更新当前页码
+    
+    // 构建URL，包含搜索关键词（如果有）
+    let url = `manage.php?get_live_data=true&live_source_config=${selectedConfig}&page=${page}&per_page=${rowsPerPage}`;
+    if (window.currentSearchKeyword) {
+        url += `&search=${encodeURIComponent(window.currentSearchKeyword)}`;
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            updateLiveSourceModal(data);
+        })
+        .catch(error => {
+            console.error('Error loading page data:', error);
+            tableBody.innerHTML = '<tr><td colspan="12">加载失败，请重试</td></tr>';
+        });
+}
+
 // 创建分页控件
 function setupPagination(data) {
     const paginationContainer = document.getElementById('paginationContainer');
     paginationContainer.innerHTML = ''; // 清空分页容器
 
-    const totalPages = Math.ceil(data.length / rowsPerPage);
+    // 使用服务器端总数
+    const totalItems = window.liveDataTotalCount || 0;
+    const totalPages = Math.ceil(totalItems / rowsPerPage);
+    
     if (totalPages <= 1) return;
 
     const maxButtons = 11; // 总显示按钮数，包括“<”和“>”
@@ -1060,20 +1310,44 @@ document.getElementById('rowsPerPageSelect').addEventListener('change', (e) => {
     setupPagination(filteredLiveData);
 });
 
-// 根据关键词过滤数据
+// 优化搜索框中文输入
+const liveSourceSearchInput = document.getElementById('liveSourceSearchInput');
+let isComposingIME = false;
+liveSourceSearchInput.addEventListener('compositionstart', () => isComposingIME = true);
+liveSourceSearchInput.addEventListener('compositionend', () => { isComposingIME = false; filterLiveSourceData(); });
+liveSourceSearchInput.addEventListener('input', () => { if (!isComposingIME) filterLiveSourceData(); });
+
+// 根据关键词过滤数据（服务器端搜索）
 function filterLiveSourceData() {
-    const keyword = document.getElementById('liveSourceSearchInput').value.trim().toLowerCase();
-    filteredLiveData = allLiveData.filter(item =>
-        (item.channelName || '').toLowerCase().includes(keyword) ||
-        (item.groupPrefix || '').toLowerCase().includes(keyword) ||
-        (item.groupTitle || '').toLowerCase().includes(keyword) ||
-        (item.streamUrl || '').toLowerCase().includes(keyword) ||
-        (item.tvgId || '').toLowerCase().includes(keyword) ||
-        (item.tvgName || '').toLowerCase().includes(keyword)
-    );
+    const keyword = liveSourceSearchInput.value.trim();
+    
+    if (!keyword) {
+        // 如果搜索为空，重新加载第一页
+        currentPage = 1;
+        allLiveData = [];
+        filteredLiveData = [];
+        window.liveDataMap = new Map();
+        window.loadedPages = new Set();
+        window.pageDataMap = new Map();
+        const selectedConfig = document.getElementById('live_source_config').value;
+        fetchData(`manage.php?get_live_data=true&live_source_config=${selectedConfig}&page=1&per_page=${rowsPerPage}`, updateLiveSourceModal);
+        return;
+    }
+    
+    // 执行服务器端搜索
+    const selectedConfig = document.getElementById('live_source_config').value;
+    const searchUrl = `manage.php?get_live_data=true&live_source_config=${selectedConfig}&page=1&per_page=${rowsPerPage}&search=${encodeURIComponent(keyword)}`;
+    
+    // 重置数据结构
+    allLiveData = [];
+    filteredLiveData = [];
     currentPage = 1;
-    displayPage(filteredLiveData, currentPage);
-    setupPagination(filteredLiveData);
+    window.liveDataMap = new Map();
+    window.loadedPages = new Set();
+    window.pageDataMap = new Map();
+    window.currentSearchKeyword = keyword; // 保存当前搜索关键词
+    
+    fetchData(searchUrl, updateLiveSourceModal);
 }
 
 // 更新模态框内容并初始化分页
@@ -1081,18 +1355,66 @@ function updateLiveSourceModal(data) {
     document.getElementById('sourceUrlTextarea').value = data.source_content || '';
     document.getElementById('liveTemplateTextarea').value = data.template_content || '';
     document.getElementById('live_source_config').innerHTML = data.config_options_html;
+    
     const channels = Array.isArray(data.channels) ? data.channels : [];
-    allLiveData = channels;  // 将所有数据保存在全局变量中
+    
+    // 初始化客户端编辑跟踪Map（如果还未初始化）
+    if (!window.clientModifiedTags) {
+        window.clientModifiedTags = new Set();
+    }
+    
+    // 初始化数据结构（如果还未初始化）
+    if (!window.liveDataMap) {
+        window.liveDataMap = new Map();
+    }
+    if (!window.loadedPages) {
+        window.loadedPages = new Set();
+    }
+    if (!window.pageDataMap) {
+        window.pageDataMap = new Map(); // 存储每页的数据
+    }
+    
+    // 存储当前页的数据到Map中，使用tag作为key
+    channels.forEach(channel => {
+        if (channel.tag) {
+            window.liveDataMap.set(channel.tag, channel);
+        }
+    });
+    
+    // 存储当前页的数据列表
+    const currentPageNum = data.page || 1;
+    window.pageDataMap.set(currentPageNum, channels);
+    
+    // 标记当前页已加载
+    window.loadedPages.add(currentPageNum);
+    
+    // 设置总数和分页信息
+    window.liveDataTotalCount = data.total_count;
+    window.liveDataPerPage = data.per_page || 100;
+    
+    // 从Map重建allLiveData数组
+    allLiveData = Array.from(window.liveDataMap.values());
+    
     filteredLiveData = allLiveData; // 初始化过滤结果
-    currentPage = 1; // 重置为第一页
-    displayPage(channels, currentPage); // 显示第一页数据
-    setupPagination(channels); // 初始化分页控件
+    displayPage(filteredLiveData, currentPage); // 显示当前页数据
+    setupPagination(filteredLiveData); // 初始化分页控件
 }
 
 // 更新直播源配置
 function onLiveSourceConfigChange() {
     const selectedConfig = document.getElementById('live_source_config').value;
-    fetchData(`manage.php?get_live_data=true&live_source_config=${selectedConfig}`, updateLiveSourceModal);
+    // 重置数据
+    allLiveData = [];
+    filteredLiveData = [];
+    currentPage = 1;
+    window.liveDataMap = new Map();
+    window.loadedPages = new Set();
+    window.pageDataMap = new Map();
+    window.clientModifiedTags = new Set();
+    window.currentSearchKeyword = ''; // 清除搜索关键词
+    liveSourceSearchInput.value = ''; // 清空搜索框
+    // 获取第一页数据
+    fetchData(`manage.php?get_live_data=true&live_source_config=${selectedConfig}&page=1&per_page=${rowsPerPage}`, updateLiveSourceModal);
 }
 
 // 上传直播源文件
@@ -1161,6 +1483,9 @@ function saveLiveSourceInfo() {
     const liveTvgIdEnable = document.getElementById('live_tvg_id_enable').value;
     const liveTvgNameEnable = document.getElementById('live_tvg_name_enable').value;
 
+    // 只发送客户端修改过的记录
+    const dataToSend = allLiveData.filter(item => window.clientModifiedTags && window.clientModifiedTags.has(item.tag));
+
     // 保存直播源信息
     fetch('manage.php', {
         method: 'POST',
@@ -1171,12 +1496,25 @@ function saveLiveSourceInfo() {
             live_tvg_logo_enable: liveTvgLogoEnable,
             live_tvg_id_enable: liveTvgIdEnable,
             live_tvg_name_enable: liveTvgNameEnable,
-            content: JSON.stringify(allLiveData)
+            content: JSON.stringify(dataToSend),
+            batch_update: 'true'
         })
     })
     .then(response => response.json())
     .then(data => {
-        showMessageModal(data.success ? '保存成功<br>已生成 M3U 及 TXT 文件' : '保存失败');
+        if (data.success) {
+            showMessageModal('保存成功<br>已生成 M3U 及 TXT 文件');
+            
+            // 清除客户端修改标记
+            if (window.clientModifiedTags) {
+                window.clientModifiedTags.clear();
+            }
+            
+            // 刷新当前页显示
+            displayPage(filteredLiveData, currentPage);
+        } else {
+            showMessageModal('保存失败');
+        }
     })
     .catch(error => {
         showMessageModal('保存过程中出现错误: ' + error);
@@ -1366,15 +1704,10 @@ function saveLiveTemplate() {
     liveTemplateEnable = document.getElementById('live_template_enable').value;
     liveFuzzyMatch = document.getElementById('live_fuzzy_match').value;
     liveUrlComment = document.getElementById('live_url_comment').value;
-    fetch('manage.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            update_config_field: 'true',
-            live_template_enable: liveTemplateEnable,
-            live_fuzzy_match: liveFuzzyMatch,
-            live_url_comment: liveUrlComment
-        })
+    saveConfigField({
+        live_template_enable: liveTemplateEnable,
+        live_fuzzy_match: liveFuzzyMatch,
+        live_url_comment: liveUrlComment
     });
 
     // 内容写入 template.json 文件
@@ -1629,10 +1962,8 @@ function updateChannelMapping() {
     const regex = channelMappings.value.split('\n').filter(l => l.includes('regex:'));
     const ignore = allChannels.find(c => c.original === '【频道忽略字符】');
     const done = () => { channelMappings.value = [...map, ...regex].join('\n'); updateConfig(); };
-    ignore ? fetch('manage.php', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: new URLSearchParams({update_config_field: 'true', channel_ignore_chars: ignore.mapped.trim()})
+    ignore ? saveConfigField({
+        channel_ignore_chars: ignore.mapped.trim()
     }).then(done).catch(console.error) : done();
 }
 
@@ -1721,7 +2052,7 @@ function parseSourceInfo(message = '') {
     })
     .catch(error => showMessageModal('解析过程中发生错误：' + error));
 
-    document.getElementById('liveSourceSearchInput').value = ''; // 清空搜索框内容
+    liveSourceSearchInput.value = ''; // 清空搜索框内容
 }
 
 // 保存限定频道列表
@@ -1832,7 +2163,6 @@ async function changeTokenUA(type) {
                 <button onclick="updateTokenUA('${type}')" style="margin-bottom: -10px;">确认</button>
             </div>
         `;
-
     } catch (err) {
         console.error('获取 config 失败:', err);
         showMessageModal('无法获取配置信息，请稍后重试');
@@ -1845,34 +2175,25 @@ function updateTokenUA(type) {
     const type_range = document.getElementById(`${type}_range`).value;
 
     // 内容写入 config.json 文件
-    fetch('manage.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            update_config_field: 'true',
-            [`${type}_range`]: type_range,
-            [type]: newTokenUA
-        })
+    saveConfigField({
+        [`${type}_range`]: type_range,
+        [type]: newTokenUA
     })
-    .then(response => response.json())
     .then(data => {
         if (data.success) {
-            if (type == 'token' || newTokenUA == '') {
-                alert('修改成功');
-                window.location.href = 'manage.php';
-            }
-            else {
-                showMessageModal('修改成功');
-            }
+            showMessageModal('修改成功');
         } else {
             showMessageModal('修改失败');
         }
     })
-    .catch(error => showMessageModal('保存过程中出现错误: ' + error));
+    .catch(err => showMessageModal('保存过程中出现错误: ' + err));
 }
 
 // token_range 更变后进行提示
 async function showTokenRangeMessage() {
+    const tokenRange = document.getElementById("token_range")?.value ?? "1";
+    if (tokenRange === '0') return;
+
     try {
         // 并行获取 serverUrl 和 config
         const [serverRes, configRes] = await Promise.all([
@@ -1886,11 +2207,6 @@ async function showTokenRangeMessage() {
         const serverUrl  = serverData.server_url;
         const tokenFull  = configData.token;
         const redirect = serverData.redirect ? true : false;
-
-        // 从页面 select/input 获取 token_range
-        const tokenRangeElem = document.getElementById("token_range");
-        const tokenRange = tokenRangeElem ? tokenRangeElem.value : "1";
-
         const token = tokenFull.split('\n')[0];
         let message = '';
 
@@ -1908,14 +2224,56 @@ async function showTokenRangeMessage() {
                         <a href="${serverUrl}/t.xml.gz?token=${token}" target="_blank">${serverUrl}/t.xml.gz?token=${token}</a>`;
         }
 
-        if (message) {
-            showMessageModal(message);
-        }
-
+        showMessageModal(message);
     } catch (err) {
         console.error('获取 serverUrl 或 config 失败:', err);
         showMessageModal('无法获取服务器地址或配置信息，请稍后重试');
     }
+}
+
+// 修改通知信息对话框
+async function changeNotifyInfo() {
+    const notifyMode = document.getElementById('notify')?.value ?? "0";
+    if (notifyMode === '0') return;
+
+    try {
+        // 获取 config
+        const res = await fetch('manage.php?get_config=true');
+        const config = await res.json();
+        let currentSCKey = config.serverchan_key || '';
+
+        showMessageModal('');
+        document.getElementById('messageModalMessage').innerHTML = `
+            <div style="width: auto;">
+                <h3>Sendkey</h3>
+                <div>同时支持 <a href="https://sct.ftqq.com/r/15503" target="_blank">Server酱ᵀ</a>（免费5次/天）
+						与 <a href="https://sc3.ft07.com/" target="_blank">Server酱³</a>（公测不限次）</div>
+                <input type="text" id="newSCKey" value="${currentSCKey}" style="margin-top: 20px; margin-bottom: 20px;"/>
+                <button onclick="updateNotifyInfo()" style="margin-bottom: -10px;">确认</button>
+            </div>
+        `;
+    } catch (err) {
+        console.error('获取 config 失败:', err);
+        showMessageModal('无法获取配置信息，请稍后重试');
+    }
+}
+
+// 更新 serverchan_key 到 config.json
+function updateNotifyInfo() {
+    var newSCKey = document.getElementById('newSCKey').value.trim();
+
+    // 内容写入 config.json 文件
+    saveConfigField({
+        serverchan_key: newSCKey
+    })
+    .then(data => {
+        if (data.success) {
+            showMessageModal('修改成功');
+        } else {
+            showMessageModal('修改失败');
+        }
+    })
+    .catch(err => showMessageModal('保存过程中出现错误: ' + err));
 }
 
 // 监听 debug_mode 更变
