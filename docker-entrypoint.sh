@@ -93,6 +93,7 @@ if [ "$ENABLE_HTTPS" = "true" ]; then
 cat <<EOF > /etc/nginx/http.d/default.conf
 server {
     listen ${HTTP_PORT};
+    listen [::]:${HTTP_PORT};
     server_name ${SERVER_NAME};
     return 301 https://\$host\$request_uri;
 }
@@ -101,6 +102,7 @@ EOF
 cat <<EOF > /etc/nginx/http.d/default.conf
 server {
     listen ${HTTP_PORT};
+    listen [::]:${HTTP_PORT};
     server_name ${SERVER_NAME};
     root /htdocs;
 
@@ -117,6 +119,7 @@ cat <<EOF >> /etc/nginx/http.d/default.conf
 
 server {
     listen ${HTTPS_PORT} ssl;
+    listen [::]:${HTTPS_PORT} ssl;
     server_name ${SERVER_NAME};
 
     ssl_certificate     ${CERT_FILE};
@@ -137,6 +140,7 @@ else
 cat <<EOF > /etc/nginx/http.d/default.conf
 server {
     listen ${HTTP_PORT};
+    listen [::]:${HTTP_PORT};
     server_name ${SERVER_NAME};
     root /htdocs;
 
