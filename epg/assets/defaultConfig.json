@@ -53,6 +53,8 @@
     "target_time_zone": 0,
     "ip_list_mode": 0,
     "check_update": 1,
+    "notify": 0,
+    "serverchan_key": "",
     "debug_mode": 0,
     "manage_password": ""
 }

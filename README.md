@@ -83,7 +83,7 @@ IPTV 工具箱， `Docker` 部署，支持 **EPG 管理**、**直播源管理**�
 ### [CHANGELOG.md](./CHANGELOG.md)
 
 ## 🚀 部署步骤
-### 部署脚本：
+### 部署/管理脚本（推荐）
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/taksssss/iptv-tool/master/install.sh)
 ```
@@ -96,7 +96,7 @@ bash <(curl -Ls https://gitee.com/taksssss/iptv-tool/raw/main/install.sh)
 bash <(curl -Ls https://gcore.jsdelivr.net/gh/taksssss/iptv-tool@master/install.sh)
 ```
 
-### 手动部署 
+### 手动部署
 ```bash
 docker run -d --name php-epg \
   -p 5678:80 \
@@ -112,6 +112,18 @@ docker run -d --name php-epg \
 > `-e PHP_MEMORY_LIMIT=512M`：PHP 内存限制，默认 `512M`  
 > `-e ENABLE_FFMPEG=true`：启用 ffmpeg 组件  
 > 无法正常拉取镜像的，可将 `taksss/php-epg:latest` 替换为 `ccr.ccs.tencentyun.com/taksss/php-epg:latest`
+
+> **HTTPS 相关：**  
+> `-p 5679:443`：映射 HTTPS 端口  
+> `-e ENABLE_HTTPS=true`：启用 HTTPS  
+> `-e FORCE_HTTPS=true`：强制跳转到 HTTPS  
+> `-v /path/to/server.crt:/etc/ssl/certs/server.crt`：挂载证书文件  
+> `-v /path/to/server.key:/etc/ssl/certs/server.key`：挂载私钥文件
+
+手动升级
+```bash
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtower php-epg --cleanup --run-once
+```
 
 ## 🛠️ 使用步骤
 

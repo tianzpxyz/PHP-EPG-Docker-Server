@@ -16,6 +16,12 @@ TENCENT_IMAGE="ccr.ccs.tencentyun.com/taksss/php-epg:latest"
 DATA_DIR="$HOME/epg"
 UPDATE_CONTAINER="php-epg-update"
 
+# HTTPS 相关
+ENABLE_HTTPS=false
+FORCE_HTTPS=false
+CERT_DST_PATH="/etc/ssl/certs/server.crt"
+KEY_DST_PATH="/etc/ssl/private/server.key"
+
 # 颜色定义
 RED="\033[31m"
 GREEN="\033[32m"
@@ -25,13 +31,12 @@ CYAN="\033[36m"
 BOLD="\033[1m"
 RESET="\033[0m"
 
-# 检测是否需要 sudo
+# 检测 sudo
 SUDO_CMD=""
 if [ "$(id -u)" -ne 0 ]; then
     SUDO_CMD="sudo"
 fi
 
-# Docker 命令封装，自动加 sudo
 docker_cmd() {
     if docker info >/dev/null 2>&1; then
         docker "$@"
@@ -43,13 +48,9 @@ docker_cmd() {
 install_docker() {
     if ! command -v docker >/dev/null 2>&1; then
         echo -e "${YELLOW}未检测到 Docker，开始安装...${RESET}"
-
-        # 使用 Docker 官方安装脚本 + 阿里云源
         curl -fsSL https://get.docker.com | $SUDO_CMD bash -s docker --mirror Aliyun
-
         $SUDO_CMD systemctl enable docker
         $SUDO_CMD systemctl start docker
-
         echo -e "${GREEN}Docker 安装完成${RESET}"
     fi
 }
@@ -124,8 +125,8 @@ choose_image() {
     echo "请选择镜像源:"
     echo "1) Docker Hub (默认)"
     echo "2) 腾讯云镜像"
-    echo -n "请输入 (1-2): "
-    read img_choice
+    read -p "请输入 (1-2): " img_choice
+     
     if [ "$img_choice" = "2" ]; then
         IMAGE_NAME=$TENCENT_IMAGE
     fi
@@ -133,21 +134,37 @@ choose_image() {
 
 set_env() {
     echo ""
-    echo -n "数据目录 [默认 $HOME/epg]: "
-    read input_dir
+    read -p "数据目录 [默认 $HOME/epg]: " input_dir
     [ -n "$input_dir" ] && DATA_DIR=$input_dir
 
-    echo -n "PHP 内存限制 [默认 512M]: "
-    read PHP_MEMORY_LIMIT
+    read -p "PHP 内存限制 [默认 512M]: " PHP_MEMORY_LIMIT
     PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT:-512M}
 
-    echo -n "是否启用 ffmpeg? (y/n 默认 n): "
-    read FFMPEG_CHOICE
-    echo ""
+    read -p "是否启用 ffmpeg? (y/n 默认 n): " FFMPEG_CHOICE
     if [ "$FFMPEG_CHOICE" = "y" ] || [ "$FFMPEG_CHOICE" = "Y" ]; then
         ENABLE_FFMPEG=true
     else
         ENABLE_FFMPEG=false
+    fi
+
+    read -p "是否启用 HTTPS？(y/n 默认 n): " HTTPS_CHOICE
+    if [[ "$HTTPS_CHOICE" =~ ^[yY]$ ]]; then
+        ENABLE_HTTPS=true
+
+        read -p "是否强制跳转到 HTTPS? (y/n 默认 y): " FORCE_CHOICE
+        FORCE_CHOICE=${FORCE_CHOICE:-y}
+        [[ "$FORCE_CHOICE" =~ ^[yY]$ ]] && FORCE_HTTPS=true
+
+        echo -e "\n${YELLOW}请输入证书路径用于挂载：${RESET}"
+        read -p "server.crt 文件绝对路径: " CERT_SRC_PATH
+        read -p "server.key 文件绝对路径: " KEY_SRC_PATH
+
+        if [ ! -f "$CERT_SRC_PATH" ] || [ ! -f "$KEY_SRC_PATH" ]; then
+            echo -e "${RED}错误：证书文件不存在！部署已取消。${RESET}"
+            exit 1
+        fi
+
+        echo -e "${GREEN}HTTPS 已启用，将自动映射证书 ✅${RESET}\n"
     fi
 }
 
@@ -156,8 +173,7 @@ start_container() {
     echo "请选择运行模式:"
     echo "1) Bridge 模式 (默认)"
     echo "2) Host 模式 (支持IPv6)"
-    echo -n "请输入 (1-2): "
-    read mode
+    read -p "请输入 (1-2): " mode
     mode=${mode:-1}
 
     choose_image
@@ -166,51 +182,68 @@ start_container() {
     docker_cmd rm -f $CONTAINER_NAME >/dev/null 2>&1
     mkdir -p $DATA_DIR
 
-    echo -n "HTTP端口 [默认5678]: "
-    read HTTP_PORT
+    echo ""
+    read -p "HTTP端口 [默认5678]: " HTTP_PORT
     HTTP_PORT=${HTTP_PORT:-5678}
 
+    CERT_MOUNT=""
+    if [ "$ENABLE_HTTPS" = "true" ]; then
+        read -p "HTTPS端口 [默认5679]: " HTTPS_PORT
+        HTTPS_PORT=${HTTPS_PORT:-5679}
+        CERT_MOUNT="-v $CERT_SRC_PATH:$CERT_DST_PATH -v $KEY_SRC_PATH:$KEY_DST_PATH"
+    fi
+
     if [ "$mode" = "1" ]; then
-        echo -n "HTTPS端口 (可留空): "
-        read HTTPS_PORT
         PORT_ARGS="-p $HTTP_PORT:80"
         [ -n "$HTTPS_PORT" ] && PORT_ARGS="$PORT_ARGS -p $HTTPS_PORT:443"
+
         docker_cmd run -d --name $CONTAINER_NAME \
             $PORT_ARGS \
             -v $DATA_DIR:/htdocs/data \
+            $CERT_MOUNT \
             -e PHP_MEMORY_LIMIT=$PHP_MEMORY_LIMIT \
             -e ENABLE_FFMPEG=$ENABLE_FFMPEG \
+            -e ENABLE_HTTPS=$ENABLE_HTTPS \
+            -e FORCE_HTTPS=$FORCE_HTTPS \
             --restart unless-stopped \
             $IMAGE_NAME
-    elif [ "$mode" = "2" ]; then
-        echo -n "HTTPS端口 [默认5679]: "
-        read HTTPS_PORT
-        HTTPS_PORT=${HTTPS_PORT:-5679}
+
+    else
+        ENV_PORTS="-e HTTP_PORT=$HTTP_PORT"
+        [ -n "$HTTPS_PORT" ] && ENV_PORTS="$ENV_PORTS -e HTTPS_PORT=$HTTPS_PORT"
         docker_cmd run -d --name $CONTAINER_NAME \
             --network host \
-            -e HTTP_PORT=$HTTP_PORT \
-            -e HTTPS_PORT=$HTTPS_PORT \
+            $CERT_MOUNT \
+            $ENV_PORTS \
             -e PHP_MEMORY_LIMIT=$PHP_MEMORY_LIMIT \
             -e ENABLE_FFMPEG=$ENABLE_FFMPEG \
+            -e ENABLE_HTTPS=$ENABLE_HTTPS \
+            -e FORCE_HTTPS=$FORCE_HTTPS \
             -v $DATA_DIR:/htdocs/data \
             --restart unless-stopped \
             $IMAGE_NAME
-    else
-        echo -e "${RED}无效选择${RESET}"
-        return
     fi
 
-    echo ""
-    echo -e "${GREEN}容器已部署 ✅${RESET}"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ 容器启动失败！${RESET}"
+        echo "请检查："
+        echo "  - 端口是否已被占用"
+        echo "  - HTTPS 证书路径是否正确（如果启用了 HTTPS）"
+        echo "  - 数据目录是否存在：$DATA_DIR"
+        echo "  - 镜像名称是否存在：$IMAGE_NAME"
+        echo "  - 是否存在同名容器：$CONTAINER_NAME"
+        exit 1
+    fi
+
+    echo -e "\n${GREEN}容器已部署 ✅${RESET}"
     echo "数据目录：$DATA_DIR"
     echo "HTTP端口：$HTTP_PORT"
     [ -n "$HTTPS_PORT" ] && echo "HTTPS端口：$HTTPS_PORT"
+    [ "$ENABLE_HTTPS" = "true" ] && echo "HTTPS：已启用（强制跳转：$FORCE_HTTPS）"
     echo "PHP 内存限制：$PHP_MEMORY_LIMIT"
     echo "ffmpeg 启用：$ENABLE_FFMPEG"
-    echo ""
-    echo "访问地址: http://{服务器IP地址}:$HTTP_PORT/manage.php"
-    echo -e "${BOLD}${RED}请务必阅读页面底部「使用说明」！${RESET}"
-    echo ""
+    echo -e "\n访问地址: http://{服务器IP地址}:$HTTP_PORT/manage.php"
+    echo -e "${BOLD}${RED}请务必阅读页面底部「使用说明」！${RESET}\n"
 }
 
 stop_container() {
@@ -238,8 +271,7 @@ manual_update() {
 }
 
 auto_update() {
-    echo -n "请输入检查更新的时间间隔(小时, 输入0关闭自动更新, 默认1): "
-    read HOURS
+    read -p "请输入检查更新的时间间隔(小时, 输入0关闭自动更新, 默认1): " HOURS
     HOURS=${HOURS:-1}
     docker_cmd rm -f $UPDATE_CONTAINER >/dev/null 2>&1
     if [ "$HOURS" -eq 0 ]; then

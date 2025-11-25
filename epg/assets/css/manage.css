@@ -17,7 +17,7 @@ body.theme-transition {
     padding: 30px;
     box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
     border-radius: 5px;
-    width: 950px;
+    width: 1010px;
     margin: auto;
 }
 
@@ -152,8 +152,7 @@ a:hover, .blue-span:hover {
 }
 
 .button-container a:hover, .button-container button:hover,
-.modal-content button:hover, input[type="submit"]:hover,
-#accessStatsTable th:hover {
+input[type="submit"]:hover, #accessStatsTable th:hover {
     background-color: #0b7dda;
 }
 
@@ -237,7 +236,7 @@ input[type="tel"] {
     box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
     top: 50%;
     transform: translateY(-50%);
-    width: 710px;
+    width: 750px;
     height: auto;
 }
 
@@ -255,7 +254,7 @@ input[type="tel"] {
 .live-source-modal-content,
 .access-log-modal-content,
 .access-stat-modal-content {
-    width: 930px;
+    width: 1000px;
 }
 
 .message-modal-content {

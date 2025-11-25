@@ -135,7 +135,7 @@ function getGenList($db) {
         return ['gen_list_mapping' => [], 'gen_list' => []];
     }
 
-    $channelsSimplified = explode("\n", t2s(implode("\n", $channels)));
+    $channelsSimplified = t2sBatch($channels);
     $allEpgChannels = $db->query("SELECT DISTINCT channel FROM epg_data WHERE date = DATE('now')")
         ->fetchAll(PDO::FETCH_COLUMN); // 避免匹配只有历史 EPG 的频道
 
@@ -183,7 +183,7 @@ function getChannelBindEPG() {
 }
 
 // 下载 XML 数据并存入数据库
-function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $white_list, $black_list, $time_offset, $replacePattern) {
+function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $white_list, $black_list, $time_offset, $replacePattern, $bindPattern) {
     global $Config;
     [$xml_data, $error, $mtime] = downloadData($xml_url, $userAgent);
     if ($xml_data !== false) {
@@ -204,6 +204,21 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
         logMessage($log_messages, "【下载】 成功 | xml 文件大小：{$fileSizeReadable}{$mtimeStr}");
         
         $xml_data = mb_convert_encoding($xml_data, 'UTF-8'); // 转换成 UTF-8 编码
+
+        // 简单验证XML格式
+        if (stripos(trim($xml_data), '<?xml') !== 0) {
+            static $retryCount = 0;
+            if ($retryCount < 5) {
+                $retryCount++;
+                logMessage($log_messages, "【格式错误！！！】 不是有效的XML文件，10秒后重试 ({$retryCount}/5)");
+                sleep(10);
+                return downloadXmlData($xml_url, $userAgent, $db, $log_messages, $gen_list, $white_list, $black_list, $time_offset, $replacePattern, $bindPattern);
+            } else {
+                logMessage($log_messages, "【格式错误！！！】 重试5次后仍不是有效的XML文件");
+                echo "<br>";
+                return;
+            }
+        }
 
         // 应用多个字符串替换规则（JSON格式或老格式 a->b,...）
         if (!empty($replacePattern)) {
@@ -228,7 +243,7 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
         if (($Config['cht_to_chs'] ?? 1) === 2) { $xml_data = t2s($xml_data); }
         $db->beginTransaction();
         try {
-            [$processCount, $skipCount] = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $time_offset);
+            [$processCount, $skipCount] = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $time_offset, $bindPattern);
             $db->commit();
             logMessage($log_messages, "【更新】 成功：入库 {$processCount} 条，跳过 {$skipCount} 条");
         } catch (Exception $e) {
@@ -242,7 +257,7 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
 }
 
 // 处理 XML 数据并逐步存入数据库
-function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $time_offset) {
+function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $time_offset, $bindPattern) {
     global $Config, $processedRecords, $channel_bind_epg, $thresholdDate;
 
     // 统计处理数据量
@@ -255,19 +270,27 @@ function processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black
     }
 
     $cleanChannelNames = [];
+    $bindRules = json_decode($bindPattern, true) ?: [];
 
     // 读取频道数据
     while ($reader->read() && $reader->name !== 'channel');
     while ($reader->name === 'channel') {
         $channel = new SimpleXMLElement($reader->readOuterXML());
         $channelId = (string)$channel['id'];
-        $cleanChannelNames[$channelId] = cleanChannelName((string)$channel->{'display-name'});
+        $channelDisplayName = (string)$channel->{'display-name'};
+
+        // 先检查 bindPattern
+        if (isset($bindRules[$channelDisplayName]) && $bindRules[$channelDisplayName] !== $channelId) {
+            $reader->next('channel');
+            continue;
+        }
+
+        $cleanChannelNames[$channelId] = cleanChannelName($channelDisplayName);
         $reader->next('channel');
     }
 
     // 繁简转换和频道筛选
-    $simplifiedChannelNames = ($Config['cht_to_chs'] ?? 1) === 1 ? 
-        explode("\n", t2s(implode("\n", $cleanChannelNames))) : $cleanChannelNames;
+    $simplifiedChannelNames = ($Config['cht_to_chs'] ?? 1) === 1 ? t2sBatch($cleanChannelNames) : $cleanChannelNames;
     $channelNamesMap = [];
     foreach ($cleanChannelNames as $channelId => $channelName) {
         $channelNameSimplified = array_shift($simplifiedChannelNames);
@@ -529,6 +552,24 @@ function compressXmlFile($xmlFilePath) {
     gzclose($gzFile);
 }
 
+// Server酱消息接口
+function sc_send($title, $desp = '', $key = '[SENDKEY]', $tags = '', $short = '')
+{
+    $postdata = http_build_query([
+        'text'  => $title,
+        'desp'  => $desp,
+        'tags'  => $tags,   // SCTP 多标签用 | 分隔
+        'short' => $short,  // 消息卡片简短描述
+    ]);
+
+    $url = strpos($key, 'sctp') === 0
+        ? "https://" . preg_replace('/^sctp(\d+)t.*$/', '$1', $key) . ".push.ft07.com/send/{$key}.send"
+        : "https://sctapi.ftqq.com/{$key}.send";
+
+    list($response, $error) = downloadData($url, '', 10, 5, 1, $postdata);
+    return $response ?: '';
+}
+
 // 记录开始时间
 $startTime = microtime(true);
 
@@ -588,7 +629,7 @@ foreach ($Config['xml_urls'] as $xml_url) {
     $cleaned_url = trim($xml_parts[0]);
     logMessage($log_messages, "【地址】 $cleaned_url");
     
-    $userAgent = $time_offset = $replacePattern = '';
+    $userAgent = $time_offset = $replacePattern = $bindPattern = '';
     $white_list = $black_list = [];
 
     foreach ($xml_parts as $part) {
@@ -630,10 +671,15 @@ foreach ($Config['xml_urls'] as $xml_url) {
                 $replacePattern = $value;
                 logMessage($log_messages, "【替换】 $replacePattern");
                 break;
+    
+            case 'bind':
+                $bindPattern = $value;
+                logMessage($log_messages, "【绑定】 $bindPattern");
+                break;
         }
     }
     
-    downloadXmlData($cleaned_url, $userAgent, $db, $log_messages, $gen_list, $white_list, $black_list, $time_offset, $replacePattern);
+    downloadXmlData($cleaned_url, $userAgent, $db, $log_messages, $gen_list, $white_list, $black_list, $time_offset, $replacePattern, $bindPattern);
 }
 
 // 更新 iconList.json 及生成 xmltv 文件
@@ -658,6 +704,26 @@ $endTime = microtime(true); // 记录结束时间
 $executionTime = round($endTime - $startTime, 1);
 echo "<br>";
 logMessage($log_messages, "【更新完成】 {$executionTime} 秒。节目数量：更新前 {$initialCount} 条，更新后 {$finalCount} 条。" . $msg);
+
+// 发送通知
+if ($Config['notify'] ?? false) {
+    $sckey = $Config['serverchan_key'] ?? '';
+    if (empty($sckey)) {
+        logMessage($log_messages, "【发送通知】 未设置 sckey，跳过发送");
+    } else {
+        $log_message_str = implode("\n\n", $log_messages) . "\n\nhttps://github.com/taksssss/iptv-tool";
+        $tag = 'IPTV工具箱';
+        $short = date('Y-m-d H:i:s') . '：' . (trim($msg) ?: '节目数无变化。');
+        $result = sc_send('定时任务日志', $log_message_str, $sckey, $tag, $short);
+        $resp = json_decode($result, true);
+        $errno = $resp['errno'] ?? $resp['data']['errno'] ?? 1;
+        if ($errno == 0) {
+            logMessage($log_messages, "【发送通知】 成功");
+        } else {
+            logMessage($log_messages, "【通知失败】 返回内容：" . json_encode($resp, JSON_UNESCAPED_UNICODE));
+        }
+    }
+}
 
 // 将日志信息写入数据库
 $log_message_str = implode("<br>", $log_messages);
