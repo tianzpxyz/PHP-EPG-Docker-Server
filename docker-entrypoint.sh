@@ -40,6 +40,21 @@ if [ "$ENABLE_HTTPS" = "true" ]; then
     fi
 fi
 
+# Create reusable FastCGI configuration file
+echo "Creating reusable FastCGI configuration file: /etc/nginx/php-fastcgi.conf"
+cat <<'EOF' > /etc/nginx/php-fastcgi.conf
+include fastcgi_params;
+fastcgi_pass 127.0.0.1:9000;
+fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+fastcgi_buffers 16 32k;
+fastcgi_buffer_size 32k;
+fastcgi_index index.php;
+fastcgi_read_timeout 300s;
+fastcgi_send_timeout 300s;
+EOF
+
+
+# Generate Nginx configuration
 echo "Generating Nginx configuration..."
 
 # Common locations config
@@ -55,6 +70,9 @@ location ^~ /data/icon/ {
 }
 location ^~ /data/scripts/ {
     allow all;
+    location ~ \.php$ {
+        include /etc/nginx/php-fastcgi.conf;
+    }
 }
 
 # Rewrite endpoints
@@ -66,14 +84,7 @@ location = /t.xml.gz { rewrite ^ /index.php?type=gz&$query_string last; }
 
 # PHP FastCGI
 location ~ \.php$ {
-    include fastcgi_params;
-    fastcgi_pass 127.0.0.1:9000;
-    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-    fastcgi_buffers 16 32k;
-    fastcgi_buffer_size 32k;
-    fastcgi_index index.php;
-    fastcgi_read_timeout 300s;
-    fastcgi_send_timeout 300s;
+    include /etc/nginx/php-fastcgi.conf;
 }
 
 # Allow larger uploads
