@@ -209,8 +209,18 @@ start_container() {
             $IMAGE_NAME
 
     else
+        echo ""
+        read -p "是否启用 IPv6？(y/n 默认 y): " IPV6_CHOICE
+        IPV6_CHOICE=${IPV6_CHOICE:-y}
+        if [[ "$IPV6_CHOICE" =~ ^[yY]$ ]]; then
+            ENABLE_IPV6=true
+        else
+            ENABLE_IPV6=false
+        fi
+
         ENV_PORTS="-e HTTP_PORT=$HTTP_PORT"
         [ -n "$HTTPS_PORT" ] && ENV_PORTS="$ENV_PORTS -e HTTPS_PORT=$HTTPS_PORT"
+
         docker_cmd run -d --name $CONTAINER_NAME \
             --network host \
             $CERT_MOUNT \
@@ -219,6 +229,7 @@ start_container() {
             -e ENABLE_FFMPEG=$ENABLE_FFMPEG \
             -e ENABLE_HTTPS=$ENABLE_HTTPS \
             -e FORCE_HTTPS=$FORCE_HTTPS \
+            -e ENABLE_IPV6=$ENABLE_IPV6 \
             -v $DATA_DIR:/htdocs/data \
             --restart unless-stopped \
             $IMAGE_NAME
