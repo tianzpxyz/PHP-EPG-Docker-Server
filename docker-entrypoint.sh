@@ -6,6 +6,7 @@ LOG_LEVEL="${LOG_LEVEL:-info}"
 TZ="${TZ:-Asia/Shanghai}"
 PHP_MEMORY_LIMIT="${PHP_MEMORY_LIMIT:-512M}"
 ENABLE_FFMPEG="${ENABLE_FFMPEG:-false}"
+ENABLE_IPV6="${ENABLE_IPV6:-false}"
 
 HTTP_PORT="${HTTP_PORT:-80}"
 HTTPS_PORT="${HTTPS_PORT:-443}"
@@ -45,11 +46,14 @@ echo "Generating Nginx configuration..."
 cat <<'EOF' > /etc/nginx/common-locations.conf
 autoindex off;
 
-# Block /data except icon directory
+# Block /data except icon, scripts directory
 location ^~ /data/ {
     deny all;
 }
 location ^~ /data/icon/ {
+    allow all;
+}
+location ^~ /data/scripts/ {
     allow all;
 }
 
@@ -65,6 +69,8 @@ location ~ \.php$ {
     include fastcgi_params;
     fastcgi_pass 127.0.0.1:9000;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    fastcgi_buffers 16 32k;
+    fastcgi_buffer_size 32k;
     fastcgi_index index.php;
     fastcgi_read_timeout 300s;
     fastcgi_send_timeout 300s;
@@ -153,6 +159,11 @@ EOF
 
 fi
 
+# IPv6 control (default OFF)
+if [ "$ENABLE_IPV6" != "true" ]; then
+    echo "IPv6 disabled by configuration, removing IPv6 listen directives"
+    sed -i '/listen \[::\]/d' /etc/nginx/http.d/default.conf
+fi
 
 # Apply PHP settings
 sed -i "s/memory_limit = .*/memory_limit = ${PHP_MEMORY_LIMIT}/" /etc/php83/php.ini
