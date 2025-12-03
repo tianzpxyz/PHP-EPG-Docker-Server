@@ -16,6 +16,7 @@ use Overtrue\PHPOpenCC\OpenCC; // 使用 OpenCC 库
 @mkdir(__DIR__ . '/data', 0755, true);
 $iconDir = __DIR__ . '/data/icon/'; @mkdir($iconDir, 0755, true);
 $liveDir = __DIR__ . '/data/live/'; @mkdir($liveDir, 0755, true);
+$scriptsDir = __DIR__ . '/data/scripts/'; @mkdir($scriptsDir, 0755, true);
 $liveFileDir = __DIR__ . '/data/live/file/'; @mkdir($liveFileDir, 0755, true);
 file_exists($configPath = __DIR__ . '/data/config.json') || copy(__DIR__ . '/assets/defaultConfig.json', $configPath);
 file_exists($customSourcePath = __DIR__ . '/data/customSource.php') || copy(__DIR__ . '/assets/defaultCustomSource.php', $customSourcePath);
