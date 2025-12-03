@@ -299,7 +299,7 @@ function findCurrentProgramme($programmes) {
 
 // 处理直播源请求
 function liveFetchHandler($query_params) {
-    global $Config, $liveDir, $serverUrl, $liveFileDir;
+    global $Config, $liveDir, $serverUrl, $liveFileDir, $tokenRange, $token;
 
     header('Content-Type: text/plain');
 
@@ -321,7 +321,8 @@ function liveFetchHandler($query_params) {
     }
 
     // 处理 TVG URL 替换
-    $tvgUrl = $serverUrl . ($query_params['type'] === 'm3u' ? '/t.xml.gz' : '/');
+    $tvgUrlToken = ($tokenRange == "2" || $tokenRange == "3") ? "&token=$token" : '';
+    $tvgUrl = $serverUrl . '/index.php?type=gz' . $tvgUrlToken;
     if ($query_params['type'] === 'm3u') {
         $content = preg_replace('/(#EXTM3U x-tvg-url=")(.*?)(")/', '$1' . $tvgUrl . '$3', $content, 1);
         $content = str_replace("tvg-logo=\"/data/icon/", "tvg-logo=\"$serverUrl/data/icon/", $content);
