@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IPTV工具箱</title>
     <link rel="stylesheet" type="text/css" href="assets/css/manage.css">
     <link rel="stylesheet" type="text/css" href="assets/css/fa-5-15-4-all-min.css">
@@ -36,53 +38,18 @@
     <h2>管理配置</h2>
     <form method="POST" id="settingsForm">
         <label for="xml_urls">【EPG地址】</label>
-        <span class="blue-span" id="channelbind" onclick="showModal('channelbindepg')">（频道指定源）</span>
+        <span class="blue-span" id="channelbind" onclick="showModal('channelbindepg')">频道指定源</span>
         <span class="blue-span" id="mobileComment_epg" onclick="commentAll('xml_urls')">【禁用/启用】</span>
         <br><br>
         <textarea id="xml_urls" name="xml_urls"><?= implode("\n", array_map('trim', $Config['xml_urls'])); ?></textarea>
         <br><br>
 
-        <div class="form-row">
-            <label for="days_to_keep" class="label-days-to-keep">数据保存天数</label>
-            <label for="start_time" class="label-time custom-margin1">【定时任务】： 开始时间</label>
-            <label for="end_time" class="label-time2 custom-margin2">结束时间</label>
-            <label for="interval_time" class="label-time3 custom-margin3">间隔周期</label>
-        </div>
-
-        <div class="form-row">
-            <select id="days_to_keep" name="days_to_keep" required>
-                <?php for ($i = 1; $i <= 30; $i++): ?>
-                    <option value="<?= $i; ?>" <?= $Config['days_to_keep'] == $i ? 'selected' : ''; ?>>
-                        <?= $i; ?>
-                    </option>
-                <?php endfor; ?>
-            </select>
-            <input type="time" id="start_time" name="start_time" value="<?= $Config['start_time']; ?>" required>
-            <input type="time" id="end_time" name="end_time" value="<?= $Config['end_time']; ?>" required>
-
-            <!-- Interval Time Controls -->
-            <select id="interval_hour" name="interval_hour" required>
-                <?php for ($h = 0; $h < 24; $h++): ?>
-                    <option value="<?= $h; ?>" <?= floor($Config['interval_time'] / 3600) == $h ? 'selected' : ''; ?>>
-                        <?= $h; ?>
-                    </option>
-                <?php endfor; ?>
-            </select> 小时
-            <select id="interval_minute" name="interval_minute" required>
-                <?php for ($m = 0; $m < 60; $m++): ?>
-                    <option value="<?= $m; ?>" <?= (intval($Config['interval_time']) % 3600) / 60 == $m ? 'selected' : ''; ?>>
-                        <?= $m; ?>
-                    </option>
-                <?php endfor; ?>
-            </select> 分钟
-        </div><br>
-
         <div class="flex-container">
             <div class="flex-item" style="width: 100%;">
                 <label>【频道别名】</label>
-                <span class="blue-span" id="channelInfi" onclick="showModal('channel')">（频道管理）</span>
-                <span class="blue-span" id="iconInfo" onclick="showModal('icon')">（台标管理）</span>
-                <span class="blue-span" id="liveInfo" onclick="showModal('live')">（直播源管理）</span>
+                <span class="blue-span" id="channelInfi" onclick="showModal('channel')">频道管理</span>
+                <span class="blue-span" id="iconInfo" onclick="showModal('icon')">台标管理</span>
+                <span class="blue-span" id="liveInfo" onclick="showModal('live')">直播源管理</span>
                 <br><br>
                 <textarea id="channel_mappings" name="channel_mappings"><?php 
                     echo implode("\n", array_map(function($search, $replace) {
@@ -92,6 +59,54 @@
             </div>
         </div>
         <br>
+
+        <div class="form-grid-container-single-row">
+            <div class="form-grid-item">
+                <label for="days_to_keep">【保存天数】</label>
+                <select id="days_to_keep" name="days_to_keep" required>
+                    <?php for ($i = 1; $i <= 30; $i++): ?>
+                        <option value="<?= $i; ?>" <?= $Config['days_to_keep'] == $i ? 'selected' : ''; ?>>
+                            <?= $i; ?>
+                        </option>
+                    <?php endfor; ?>
+                </select>
+            </div>
+
+            <div class="form-grid-item">
+                <label id="interval-task-label">【定时任务】</label>
+            </div>
+            
+            <div class="form-grid-item">
+                <label for="start_time">（开始时间）</label>
+                <input type="time" id="start_time" name="start_time" value="<?= $Config['start_time']; ?>" required>
+            </div>
+        
+            <div class="form-grid-item">
+                <label for="end_time">（结束时间）</label>
+                <input type="time" id="end_time" name="end_time" value="<?= $Config['end_time']; ?>" required>
+            </div>
+        
+            <div class="form-grid-item">
+                <label for="interval_hour">（间隔周期）</label>
+                <div class="interval-controls">
+                    <select id="interval_hour" name="interval_hour" required>
+                        <?php for ($h = 0; $h < 24; $h++): ?>
+                            <option value="<?= $h; ?>" <?= floor($Config['interval_time'] / 3600) == $h ? 'selected' : ''; ?>>
+                                <?= $h; ?>
+                            </option>
+                        <?php endfor; ?>
+                    </select>小时
+                    <select id="interval_minute" name="interval_minute" required>
+                        <?php for ($m = 0; $m < 60; $m++): ?>
+                            <option value="<?= $m; ?>" <?= (intval($Config['interval_time']) % 3600) / 60 == $m ? 'selected' : ''; ?>>
+                                <?= $m; ?>
+                            </option>
+                        <?php endfor; ?>
+                    </select>分钟
+                </div>
+            </div>
+        </div><br>
+        
         <input id="update_config" name="update_config" type="submit" value="保存配置">
         <br><br>
         <div class="button-container">
@@ -112,17 +127,17 @@
 
 <!-- 底部显示 -->
 <div class="footer" style="user-select: none;">
-    <a href="https://github.com/taksssss/iptv-tool" target="_blank" style="color: #888; text-decoration: none;">
+    <a id="url" href="https://github.com/taksssss/iptv-tool" target="_blank" style="text-decoration: none;">
         https://github.com/taksssss/iptv-tool
     </a>
-    <a onclick="showVersionLog();" style="color: #888;">
-        <span id="version">v2024.11.25</span>
+    <a onclick="showVersionLog();">
+        <span id="version">v20xx.xx.xx</span>
         版本日志
     </a>
-    <a onclick="showHelpModal();" style="color: #888;">使用说明</a>
-    <a onclick="showDonationImage()" style="color: #888;">☕打赏</a>
-    <a href="https://gitee.com/taksssss/iptv-tool/blob/main/DONATIONS.md" target="_blank" style="color: #888; text-decoration: none;">
-        🌹鸣谢列表
+    <a onclick="showHelpModal();">使用说明</a>
+    <a onclick="showDonationImage()">☕打赏</a>
+    <a href="https://gitee.com/taksssss/iptv-tool/blob/main/DONATIONS.md" target="_blank" style="text-decoration: none;">
+        🌹鸣谢
     </a>
 </div>
 
@@ -202,7 +217,7 @@
     <div class="modal-content access-log-modal-content">
         <span class="close">&times;</span>
         <h2>访问日志</h2>
-        <p id="accessLogContent" style="height: 413px; overflow: auto; font-family: monospace; line-height: 1.5;"></p>
+        <p id="accessLogContent" style="height: 413px; overflow: auto; line-height: 1.5;"></p>
         <div class="button-container">
             <button type="button" onclick="showAccessStats()">访问统计</button>
             <button type="button" onclick="clearAccessLog()">清空日志</button>
@@ -379,19 +394,19 @@
         <!-- 直播源配置、地址 -->
         <div class="input-container">
             <label for="sourceUrlTextarea" style="display: inline-block;">【直播源地址】</label>
-            <label for="live_source_config">（配置：</label>
-            <select id="live_source_config" style="height: 26px; font-size: 14px;" onchange="onLiveSourceConfigChange()"></select>
+            <label for="live_source_config">配置：</label>
+            <select id="live_source_config" onchange="onLiveSourceConfigChange()"></select>
+            <br class="mobile-br">
             <span class="blue-span" onclick="openLiveSourceConfigDialog(true)">新建</span>
             <span class="blue-span" onclick="openLiveSourceConfigDialog(false)">另存</span>
             <span class="blue-span" onclick="deleteSource()">删除</span>
-            <label for="live_source_config">）</label>
             <span class="blue-span" id="mobileComment_source" onclick="commentAll('sourceUrlTextarea')">【禁用/启用】</span>
             <br><textarea id="sourceUrlTextarea"></textarea>
         </div>
         <br>
         
         <!-- 中间按钮区 -->
-        <div class="button-container" style="width: 75%;">
+        <div class="button-container"  style="width: 75%;">
             <input type="file" name="liveSourceFile" id="liveSourceFile" style="display: none;" accept=".m3u, .txt">
             <button id="uploadSourceBtn" onclick="document.getElementById('liveSourceFile').click()">上传源</button>
             <button id="parseSourceInfoBtn" onclick="parseSourceInfo()">解析源</button>
@@ -455,7 +470,6 @@
 
             <!-- 每页条数选择，靠右 -->
             <div style="flex: 1; text-align: right;">
-                <label for="rowsPerPageSelect">每页显示：</label>
                 <select id="rowsPerPageSelect">
                     <option value="50">50 条</option>
                     <option value="100">100 条</option>
@@ -564,19 +578,11 @@
         </div>
 
         <!-- 第三行 -->
-        <div class="row" style="margin-top: 25px;">
-            <div class="column">
-                <button id="foregroundCheckBtn" onclick="showExecResult('check.php', () => showModal('live', popup = false))">前台测速</button>
-            </div>
-            <div class="column">
-                <button id="backgroundCheckBtn" onclick="showExecResult('check.php?backgroundMode=true', () => showModal('live', popup = false), fullSize = false)">后台测速</button>
-            </div>
-            <div class="column">
-                <button id="cleanCheckResultBtn" onclick="showExecResult('check.php?cleanMode=true', () => showModal('live', popup = false), fullSize = false)">清除结果</button>
-            </div>
-            <div class="column">
-                <button id="saveConfig" onclick="updateConfig()">保存配置</button>
-            </div>
+        <div class="button-container button-container-check-speed" style="margin-top: 25px;">
+            <button id="foregroundCheckBtn" onclick="showExecResult('check.php', () => showModal('live', popup = false))">前台测速</button>
+            <button id="backgroundCheckBtn" onclick="showExecResult('check.php?backgroundMode=true', () => showModal('live', popup = false), fullSize = false)">后台测速</button>
+            <button id="cleanCheckResultBtn" onclick="showExecResult('check.php?cleanMode=true', () => showModal('live', popup = false), fullSize = false)">清除结果</button>
+            <button id="saveConfig" onclick="updateConfig()">保存配置</button>
         </div>
     </div>
 </div>
@@ -642,15 +648,24 @@
                 </select>
             </div>
         </div>
-        
+
         <!-- 第四行 -->
-        <div class="row" style="margin-top: 25px;">
+        <div class="row">
             <div class="column">
-                <button id="cleanUnusedSourceBtn" onclick="cleanUnusedSource()">清理缓存数据</button>
+                <label for="tag_gen_mode">直播源唯一性：</label>
+                <select id="tag_gen_mode" name="tag_gen_mode" required>
+                    <option value="0" <?php if (@$Config['tag_gen_mode'] == 0) echo 'selected'; ?>>默认</option>
+                    <option value="1" <?php if (@$Config['tag_gen_mode'] == 1) echo 'selected'; ?>>适应动态地址</option>
+                </select>
             </div>
             <div class="column">
-                <button id="saveConfig" onclick="updateConfig()">保存配置</button>
             </div>
+        </div>
+
+        <!-- 第五行 -->
+        <div class="button-container button-container-source-setting" style="margin-top: 25px;">
+            <button id="cleanUnusedSourceBtn" onclick="cleanUnusedSource()">清理缓存数据</button>
+            <button id="saveConfig" onclick="updateConfig()">保存配置</button>
         </div>
     </div>
 </div>
