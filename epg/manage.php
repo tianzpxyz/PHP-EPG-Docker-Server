@@ -1053,30 +1053,44 @@ try {
                         $db->beginTransaction();
                         
                         foreach ($content as $item) {
-                            // 使用 tag 作为唯一标识符更新记录
-                            if (isset($item['tag'])) {
-                                $stmt = $db->prepare("
-                                    UPDATE channels 
-                                    SET groupPrefix = ?, groupTitle = ?, channelName = ?, chsChannelName = ?,
-                                        streamUrl = ?, iconUrl = ?, tvgId = ?, tvgName = ?, 
-                                        disable = ?, modified = ?
-                                    WHERE tag = ? AND config = ?
-                                ");
-                                $stmt->execute([
-                                    $item['groupPrefix'] ?? '',
-                                    $item['groupTitle'] ?? '',
-                                    $item['channelName'] ?? '',
-                                    $item['chsChannelName'] ?? '',
-                                    $item['streamUrl'] ?? '',
-                                    $item['iconUrl'] ?? '',
-                                    $item['tvgId'] ?? '',
-                                    $item['tvgName'] ?? '',
-                                    $item['disable'] ?? 0,
-                                    $item['modified'] ?? 0,
-                                    $item['tag'],
-                                    $liveSourceConfig
-                                ]);
+                            if (!isset($item['tag'])) continue;
+
+                            // 基础更新字段
+                            $fields = [
+                                'groupPrefix = ?',
+                                'groupTitle = ?',
+                                'channelName = ?',
+                                'chsChannelName = ?',
+                                'iconUrl = ?',
+                                'tvgId = ?',
+                                'tvgName = ?',
+                                'disable = ?',
+                                'modified = ?',
+                            ];
+
+                            $params = [
+                                $item['groupPrefix'] ?? '',
+                                $item['groupTitle'] ?? '',
+                                $item['channelName'] ?? '',
+                                $item['chsChannelName'] ?? '',
+                                $item['iconUrl'] ?? '',
+                                $item['tvgId'] ?? '',
+                                $item['tvgName'] ?? '',
+                                $item['disable'] ?? 0,
+                                $item['modified'] ?? 0,
+                            ];
+                            
+                            // tag_gen_mode != 1 时才更新 streamUrl
+                            if (($Config['tag_gen_mode'] ?? 0) != 1) {
+                                $fields[] = 'streamUrl = ?';
+                                $params[] = $item['streamUrl'] ?? '';
                             }
+                            
+                            $params[] = $item['tag'];
+                            $params[] = $liveSourceConfig;
+                            $sql = "UPDATE channels SET " . implode(', ', $fields) . " WHERE tag = ? AND config = ?";
+                            $stmt = $db->prepare($sql);
+                            $stmt->execute($params);
                         }
                         
                         $db->commit();

@@ -22,8 +22,8 @@ document.getElementById('settingsForm').addEventListener('submit', function(even
         'token_range', 'user_agent_range', 'notify', 'debug_mode', 'target_time_zone', 'ip_list_mode', 'live_source_config', 
         'live_template_enable', 'live_fuzzy_match', 'live_url_comment', 'live_tvg_logo_enable', 'live_tvg_id_enable', 
         'live_tvg_name_enable', 'live_source_auto_sync', 'live_channel_name_process', 'gen_live_update_time', 'm3u_icon_first', 
-        'ku9_secondary_grouping', 'check_ipv6', 'min_resolution_width', 'min_resolution_height', 'urls_limit','sort_by_delay', 
-        'check_speed_auto_sync', 'check_speed_interval_factor'];
+        'ku9_secondary_grouping', 'tag_gen_mode', 'check_ipv6', 'min_resolution_width', 'min_resolution_height', 'urls_limit', 
+        'sort_by_delay', 'check_speed_auto_sync', 'check_speed_interval_factor'];
 
     // 创建隐藏字段并将其添加到表单
     const form = this;
@@ -160,17 +160,24 @@ function commentAll(id) {
     textarea.value = newLines.join('\n');
 }
 
-// 调整移动端布局
-if (/Mobi|Android|iPhone/i.test(navigator.userAgent)) {
-    document.getElementById('xml_urls').style.minHeight = '350px';
-    document.getElementById('sourceUrlTextarea').style.minHeight = '300px';
-}
-
 // 格式化时间
 function formatTime(seconds) {
     const formattedHours = String(Math.floor(seconds / 3600));
     const formattedMinutes = String(Math.floor((seconds % 3600) / 60));
     return `${formattedHours}小时${formattedMinutes}分钟`;
+}
+
+// 统一模态框打开函数
+function openModal(modal) {
+    if (!modal) return;
+    document.body.style.overflow = "hidden";
+    modal.style.cssText = `display:block;z-index:${zIndex++}`;
+    modal.onmousedown = e => {
+        if (e.target === modal || e.target.classList.contains("close")) {
+            document.body.style.overflow = "auto";
+            modal.style.display = 'none';
+        }
+    };
 }
 
 // 显示带消息的模态框
@@ -180,17 +187,7 @@ function showModalWithMessage(modalId, messageId = '', message = '') {
         const el = document.getElementById(messageId);
         el && (el.tagName === 'TEXTAREA' ? el.value = message : el.innerHTML = message);
     }
-
-    modal.style.cssText = `display:block;z-index:${zIndex++}`;
-    modal.querySelector('.close')?.addEventListener('mousedown', () => modal.style.display = 'none');
-    const outsideClick = e => {
-        if (e.target === modal) {
-            modal.style.display = 'none';
-            window.removeEventListener('mousedown', outsideClick);
-        }
-    };
-    window.addEventListener('mousedown', outsideClick);
-    modal.querySelector('.modal-content')?.addEventListener('mousedown', e => e.stopPropagation());
+    openModal(modal);
 }
 
 // 显示消息模态框
@@ -280,16 +277,7 @@ function showModal(type, popup = true, data = '') {
     if (!popup) {
         return;
     }
-    modal.style.cssText = `display:block;z-index:${zIndex++}`;
-    modal.querySelector('.close')?.addEventListener('mousedown', () => modal.style.display = 'none');
-    const outsideClick = e => {
-        if (e.target === modal) {
-            modal.style.display = 'none';
-            window.removeEventListener('mousedown', outsideClick);
-        }
-    };
-    window.addEventListener('mousedown', outsideClick);
-    modal.querySelector('.modal-content')?.addEventListener('mousedown', e => e.stopPropagation());
+    openModal(modal);
 }
 
 function fetchData(endpoint, callback) {
@@ -319,6 +307,8 @@ function showExecResult(fileName, callback, fullSize = true) {
         wrapper.style.maxWidth = '600px';
     }
     wrapper.style.overflow = 'auto';
+    wrapper.style.whiteSpace = 'nowrap'
+    wrapper.id = "execLog";
     messageContainer.appendChild(wrapper);
 
     // 创建 XMLHttpRequest 对象
@@ -386,10 +376,11 @@ function showDonationImage() {
 
     showMessageModal('');
     messageModalMessage.innerHTML = `
-        <img src="${img}" style="max-width:100%; display:block; margin: 0 auto; margin-top:55px;">
-        <p style="margin-top:10px; text-align:center;">感谢鼓励！</p>
+        <div class="modal-inner">
+            <img src="${img}" style="max-width:100%; display:block; margin: 0 auto; margin-top:55px;">
+            <p style="margin-top:10px; text-align:center;">感谢鼓励！</p>
+        </div>
     `;
-
 }
 
 // 更新 EPG 内容
@@ -640,10 +631,11 @@ function showAccessStats() {
     modal.style.zIndex = zIndex++;
     modal.style.display = "block";
     loadAccessStats();
-
+    document.body.style.overflow = "hidden";
     modal.onmousedown = e => {
         if (e.target === modal || e.target.classList.contains("close")) {
             modal.style.display = "none";
+            document.body.style.overflow = "auto";
             showAccessLogModal();
         }
     };
@@ -1529,7 +1521,7 @@ function openLiveSourceConfigDialog(isNew = false) {
             <h3>${isNew ? '新建配置' : '另存为新配置'}</h3>
             <input type="text" value="" id="newConfigName" placeholder="请输入配置名"
                 style="text-align: center; font-size: 15px; margin-bottom: 15px;" />
-            <div class="button-container" style="text-align: center; margin-bottom: -10px;">
+            <div class="button-container button-container-source-setting" style="text-align: center; margin-bottom: -10px;">
                 <button id="confirmBtn">确认</button>
                 <button onclick="document.getElementById('messageModal').style.display='none'">取消</button>
             </div>
@@ -1586,7 +1578,7 @@ function deleteSource() {
         <div style="width: 300px; text-align: center;">
             <h3>确认删除</h3>
             <p>确定删除配置 "${configName}"？此操作不可恢复。</p>
-            <div class="button-container">
+            <div class="button-container button-container-source-setting">
                 <button id="confirmBtn">确认</button>
                 <button id="cancelBtn">取消</button>
             </div>
@@ -2157,7 +2149,7 @@ async function changeTokenUA(type) {
         showMessageModal('');
         const typeStr = (type === 'token' ? 'Token' : 'User-Agent') + '<br>支持多个，每行一个';
         document.getElementById('messageModalMessage').innerHTML = `
-            <div style="width: 450px;">
+            <div class="modal-inner" style="width: 450px;">
                 <h3>修改 ${typeStr}</h3>
                 <textarea id="newTokenUA" style="min-height: 250px; margin-bottom: 15px;">${currentTokenUA}</textarea>
                 <button onclick="updateTokenUA('${type}')" style="margin-bottom: -10px;">确认</button>
@@ -2219,9 +2211,11 @@ async function showTokenRangeMessage() {
 
         if (tokenRange === "2" || tokenRange === "3") {
             if (message) message += '<br>';
+            const xml = redirect ? `${serverUrl}/t.xml?token=${token}` : `${serverUrl}/index.php?type=xml&token=${token}`;
+            const gz = redirect ? `${serverUrl}/t.xml.gz?token=${token}` : `${serverUrl}/index.php?type=gz&token=${token}`;
             message += `EPG地址：<br><a href="${serverUrl}/index.php?token=${token}" target="_blank">${serverUrl}/index.php?token=${token}</a><br>
-                        <a href="${serverUrl}/t.xml?token=${token}" target="_blank">${serverUrl}/t.xml?token=${token}</a><br>
-                        <a href="${serverUrl}/t.xml.gz?token=${token}" target="_blank">${serverUrl}/t.xml.gz?token=${token}</a>`;
+                        <a href="${xml}" target="_blank">${xml}</a><br>
+                        <a href="${gz}" target="_blank">${gz}</a>`;
         }
 
         showMessageModal(message);
@@ -2244,7 +2238,7 @@ async function changeNotifyInfo() {
 
         showMessageModal('');
         document.getElementById('messageModalMessage').innerHTML = `
-            <div style="width: auto;">
+            <div class="modal-inner" style="width: auto;">
                 <h3>Sendkey</h3>
                 <div>同时支持 <a href="https://sct.ftqq.com/r/15503" target="_blank">Server酱ᵀ</a>（免费5次/天）
 						与 <a href="https://sc3.ft07.com/" target="_blank">Server酱³</a>（公测不限次）</div>
