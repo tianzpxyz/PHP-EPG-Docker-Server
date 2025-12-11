@@ -331,14 +331,18 @@ function liveFetchHandler($query_params) {
     // 如果启用代理模式
     if (!empty($query_params['proxy'])) {
         if ($query_params['type'] === 'm3u') {
-            $content = preg_replace_callback('/^(?!#)(.+)$/m', function ($matches) use ($Config, $serverUrl) {
-                $encUrl = urlencode(encryptUrl(trim($matches[1]), $Config['token']));
-                return $serverUrl . '/proxy.php?url=' . $encUrl;
+            $content = preg_replace_callback('/^(?!#)(.+)$/m', function ($m) use ($Config, $serverUrl) {
+                $url = trim($m[1]);
+                [$enc, $suffix] = strpos($url, '$') !== false ? explode('$', $url, 2) : [$url, ''];
+                $enc = urlencode(encryptUrl($enc, $Config['token']));
+                return $serverUrl . '/proxy.php?url=' . $enc . ($suffix !== '' ? '$' . $suffix : '');
             }, $content);
         } elseif ($query_params['type'] === 'txt') {
-            $content = preg_replace_callback('/^([^,#]+),(?!#)(.+)$/m', function ($matches) use ($Config, $serverUrl) {
-                $encUrl = urlencode(encryptUrl(trim($matches[2]), $Config['token']));
-                return $matches[1] . ',' . $serverUrl . '/proxy.php?url=' . $encUrl;
+            $content = preg_replace_callback('/^([^,#]+),(.+)$/m', function ($m) use ($Config, $serverUrl) {
+                $url  = trim($m[2]);
+                [$enc, $suffix] = strpos($url, '$') !== false ? explode('$', $url, 2) : [$url, ''];
+                $enc = urlencode(encryptUrl($enc, $Config['token']));
+                return $m[1] . ',' . $serverUrl . '/proxy.php?url=' . $enc . ($suffix !== '' ? '$' . $suffix : '');
             }, $content);
         }
     }
