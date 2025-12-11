@@ -328,7 +328,7 @@ input[type="tel"] {
 }
 
 .table-container[id="access-stats-table-container"] {
-    height: 467px;
+    height: 471px;
 }
 
 #logTable, #channelMatchTable, #channelTable, 
@@ -802,7 +802,8 @@ body.dark .checkbox-label .ball {
     }
 
     .button-container-check-speed,
-    .button-container-source-setting {
+    .button-container-source-setting,
+    .button-container-access-stats {
         grid-template-columns: repeat(2, 1fr);
     }
 
@@ -836,6 +837,10 @@ body.dark .checkbox-label .ball {
 
     .message-modal-content {
         width: auto !important;
+    }
+
+    .message-modal-content.fullsize-modal {
+        width: 1000px !important;
     }
 
     .modal-content::-webkit-scrollbar {

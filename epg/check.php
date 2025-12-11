@@ -14,8 +14,8 @@
  * - 支持按延迟排序、同频道接口数量限制，并自动更新数据库及生成 M3U/TXT 文件
  *
  * 参数说明：
- * - backgroundMode=true   后台运行测速（关闭浏览器也继续执行）
- * - cleanMode=true        清空测速数据并重置频道状态
+ * - backgroundMode=1      后台运行测速（关闭浏览器也继续执行）
+ * - cleanMode=1           清空测速数据并重置频道状态
  *
  * 作者: Tak
  * GitHub: https://github.com/taksssss/iptv-tool
@@ -35,7 +35,7 @@ if (!shell_exec('which ffprobe')) {
 }
 
 // 如果启用 backgroundMode，则在后台执行自身并退出
-if (isset($_GET['backgroundMode']) && $_GET['backgroundMode'] === 'true') {
+if (!empty($_GET['backgroundMode'])) {
     exec("pgrep -f ffprobe", $output);
     if (count($output) > 0) exit('已有任务在运行。');
     exec("php check.php > /dev/null 2>&1 &");
@@ -60,8 +60,8 @@ $urlsLimit = $Config['urls_limit'] ?? 0;
 $sortByDelay = $Config['sort_by_delay'] ?? 0;
 $liveSourceConfig = $Config['live_source_config'] ?? 'default';
 
-// cleanMode 参数为 true 时，清除测速数据
-if (isset($_GET['cleanMode']) && $_GET['cleanMode'] === 'true') {
+// cleanMode 参数为 1 时，清除测速数据
+if (!empty($_GET['cleanMode'])) {
     // 查找 channels_info 表中 speed = 'N/A' 的 streamUrl 列表
     $stmt = $db->prepare("SELECT streamUrl FROM channels_info WHERE speed = 'N/A'");
     $stmt->execute();

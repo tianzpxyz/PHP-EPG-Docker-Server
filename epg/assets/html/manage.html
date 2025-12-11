@@ -116,7 +116,7 @@
             <button type="button" onclick="showModal('cron')">定时日志</button>
             <button type="button" onclick="showModal('update')">更新日志</button>
             <button type="button" id="accessLogBtn" onclick="showAccessLogModal()" 
-                style="display: <?= (@$Config['debug_mode'] == 1) ? 'inline-block' : 'none'; ?>;">
+                style="display: <?= (@$Config['access_log_enable'] == 1) ? 'inline-block' : 'none'; ?>;">
                 访问日志
             </button>
             <button type="button" onclick="showModal('moresetting')">更多设置</button>
@@ -218,8 +218,9 @@
         <span class="close">&times;</span>
         <h2>访问日志</h2>
         <p id="accessLogContent" style="height: 413px; overflow: auto; line-height: 1.5;"></p>
-        <div class="button-container">
+        <div class="button-container button-container-access-stats">
             <button type="button" onclick="showAccessStats()">访问统计</button>
+            <button type="button" onclick="showAccessStats(sourceOnly=1)">直播访问统计</button>
             <button type="button" onclick="clearAccessLog()">清空日志</button>
             <button type="button" onclick="downloadAccessLog()">下载日志</button>
         </div>
@@ -580,8 +581,8 @@
         <!-- 第三行 -->
         <div class="button-container button-container-check-speed" style="margin-top: 25px;">
             <button id="foregroundCheckBtn" onclick="showExecResult('check.php', () => showModal('live', popup = false))">前台测速</button>
-            <button id="backgroundCheckBtn" onclick="showExecResult('check.php?backgroundMode=true', () => showModal('live', popup = false), fullSize = false)">后台测速</button>
-            <button id="cleanCheckResultBtn" onclick="showExecResult('check.php?cleanMode=true', () => showModal('live', popup = false), fullSize = false)">清除结果</button>
+            <button id="backgroundCheckBtn" onclick="showExecResult('check.php?backgroundMode=1', () => showModal('live', popup = false), fullSize = false)">后台测速</button>
+            <button id="cleanCheckResultBtn" onclick="showExecResult('check.php?cleanMode=1', () => showModal('live', popup = false), fullSize = false)">清除结果</button>
             <button id="saveConfig" onclick="updateConfig()">保存配置</button>
         </div>
     </div>
@@ -825,10 +826,10 @@
                 </select>
             </div>
             <div class="column">
-                <label for="debug_mode">调试模式：</label>
-                <select id="debug_mode" name="debug_mode" required onchange="debugMode(this)">
-                    <option value="1" <?php if (@$Config['debug_mode'] == 1) echo 'selected'; ?>>是</option>
-                    <option value="0" <?php if (($Config['debug_mode'] ?? 0) == 0) echo 'selected'; ?>>否</option>
+                <label for="access_log_enable">访问日志：</label>
+                <select id="access_log_enable" name="access_log_enable" required onchange="debugMode(this)">
+                    <option value="1" <?php if (@$Config['access_log_enable'] == 1) echo 'selected'; ?>>是</option>
+                    <option value="0" <?php if (($Config['access_log_enable'] ?? 0) == 0) echo 'selected'; ?>>否</option>
                 </select>
             </div>
             <div class="column">
