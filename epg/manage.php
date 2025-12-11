@@ -183,11 +183,12 @@ try {
 
         // 确定操作类型
         $action_map = [
-            'get_config', 'get_env', 'get_update_logs', 'get_cron_logs', 'get_channel', 
+            'get_config', 'get_env', 'get_update_logs', 'get_cron_logs', 'get_channel',
             'get_epg_by_channel', 'get_icon', 'get_channel_bind_epg', 'get_channel_match', 'get_gen_list',
-            'get_live_data', 'parse_source_info', 'download_source_data', 'delete_unused_icons', 
-            'delete_source_config', 'delete_unused_live_data', 'get_version_log', 'get_readme_content', 
-            'get_access_log', 'get_access_stats', 'clear_access_log', 'filter_access_log_by_ip', 'get_ip_list', 'test_redis'
+            'get_live_data', 'parse_source_info', 'download_source_data', 'delete_unused_icons',
+            'delete_source_config', 'delete_unused_live_data', 'get_version_log', 'get_readme_content',
+            'get_access_log', 'download_access_log', 'get_access_stats', 'clear_access_log', 'filter_access_log_by_ip',
+            'get_ip_list', 'test_redis'
         ];
         $action = key(array_intersect_key($_GET, array_flip($action_map))) ?: '';
 
@@ -598,7 +599,7 @@ try {
             case 'get_version_log':
                 // 获取更新日志
                 $checkUpdateEnable = !isset($Config['check_update']) || $Config['check_update'] == 1;
-                $checkUpdate = isset($_GET['do_check_update']) && $_GET['do_check_update'] === 'true';
+                $checkUpdate = !empty($_GET['do_check_update']);
                 if (!$checkUpdateEnable && $checkUpdate) {
                     echo json_encode(['success' => true, 'is_updated' => false]);
                     return;
@@ -702,6 +703,18 @@ try {
                 ];
                 break;
 
+            case 'download_access_log':
+                header("Content-Type: text/plain; charset=utf-8");
+                header("Content-Disposition: attachment; filename=access.log");
+            
+                $stmt = $db->query("SELECT * FROM access_log ORDER BY id ASC");
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    echo "[{$row['access_time']}] [{$row['client_ip']}] "
+                        . ($row['access_denied'] ? "{$row['deny_message']} " : '')
+                        . "[{$row['method']}] {$row['url']} | UA: {$row['user_agent']}\n";
+                }
+                exit;
+
             case 'filter_access_log_by_ip':
                 $ip = isset($_GET['ip']) ? $_GET['ip'] : '';
                 
@@ -709,8 +722,14 @@ try {
                     $dbResponse = ['success' => false, 'message' => 'IP地址不能为空'];
                     break;
                 }
+
+                $where = "";
+
+                if (!empty($_GET['source_only'])) {
+                    $where = "AND (url LIKE '%/tv.%' OR url LIKE '%type=m3u%' OR url LIKE '%type=txt%')";
+                }
                 
-                $stmt = $db->prepare("SELECT * FROM access_log WHERE client_ip = ? ORDER BY id ASC");
+                $stmt = $db->prepare("SELECT * FROM access_log WHERE client_ip = ? $where ORDER BY id ASC");
                 $stmt->execute([$ip]);
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 
@@ -733,10 +752,17 @@ try {
                 break;
 
             case 'get_access_stats':
+                $where = "";
+
+                if (!empty($_GET['source_only'])) {
+                    $where = "WHERE (url LIKE '%/tv.%' OR url LIKE '%type=m3u%' OR url LIKE '%type=txt%')";
+                }
+
                 $stmt = $db->query("
                     SELECT client_ip, DATE(access_time) AS date,
                             COUNT(*) AS total, SUM(access_denied) AS deny
                     FROM access_log
+                    $where
                     GROUP BY client_ip, date
                 ");
                 $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
@@ -1045,7 +1071,7 @@ try {
                 $content = json_decode($_POST['content'], true);
                 
                 // 检查是否为批量更新模式（仅更新修改的记录）
-                if (isset($_POST['batch_update']) && $_POST['batch_update'] === 'true') {
+                if (!empty($_POST['batch_update'])) {
                     // 批量更新模式：仅更新传入的记录
                     $liveSourceConfig = $_POST['live_source_config'];
                     
@@ -1134,7 +1160,7 @@ try {
                 // 新直播源配置
                 $new = $_POST['new_source_config'];
                 $old = $_POST['old_source_config'] ?? '';
-                $isNew = $_POST['is_new'] === 'true';
+                $isNew = !empty($_POST['is_new']);
                 $paths = [
                     'source' => $liveDir . 'source.json',
                     'template' => $liveDir . 'template.json'

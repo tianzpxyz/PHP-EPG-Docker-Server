@@ -62,7 +62,7 @@ function deleteOldData($db, $thresholdDate, &$log_messages) {
     }
 
     // 清理访问日志
-    if ($Config['debug_mode']) {
+    if ($Config['access_log_enable']) {
         $thresholdTimestamp = strtotime($thresholdDate . ' 00:00:00');
         $thresholdStr = date('Y-m-d H:i:s', $thresholdTimestamp);
     
