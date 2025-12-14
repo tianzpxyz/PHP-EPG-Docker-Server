@@ -34,7 +34,8 @@ function isAllowed($value, array $allowedList, int $range, bool $isLive): bool
 // 获取参数和配置
 $tokenRange = $Config['token_range'] ?? 1;
 $userAgentRange = $Config['user_agent_range'] ?? 0;
-$live = in_array($query_params['type'] ?? '', ['m3u', 'txt']);
+$queryType = $query_params['type'] ?? '';
+$live = in_array($queryType, ['m3u', 'txt', 'php']);
 $accessDenied = false;
 
 // 验证 token
@@ -114,7 +115,7 @@ if (!$accessDenied && !empty($Config['ip_list_mode'])) {
 }
 
 // 记录访问日志
-if (!empty($Config['debug_mode'])) {
+if (!empty($Config['access_log_enable'])) {
     $time = date('Y-m-d H:i:s');
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
@@ -299,14 +300,14 @@ function findCurrentProgramme($programmes) {
 
 // 处理直播源请求
 function liveFetchHandler($query_params) {
-    global $Config, $liveDir, $serverUrl, $liveFileDir, $tokenRange, $token;
+    global $Config, $serverUrl, $liveFileDir, $tokenRange, $token, $queryType;
 
     header('Content-Type: text/plain');
 
     // 计算文件路径
     $isValidFile = false;
     $url = $query_params['url'] ?: 'default';
-    $filePath = sprintf('%s/%s.%s', $liveFileDir, md5(urlencode($url)), $query_params['type']);
+    $filePath = sprintf('%s/%s.%s', $liveFileDir, md5(urlencode($url)), $queryType);
     if (($query_params['latest'] === '1' && doParseSourceInfo($url)) === true || 
         file_exists($filePath) || doParseSourceInfo($url) === true) { // 判断是否需要获取最新文件
         $isValidFile = true;
@@ -323,21 +324,21 @@ function liveFetchHandler($query_params) {
     // 处理 TVG URL 替换
     $tvgUrlToken = ($tokenRange == "2" || $tokenRange == "3") ? "&token=$token" : '';
     $tvgUrl = $serverUrl . '/index.php?type=gz' . $tvgUrlToken;
-    if ($query_params['type'] === 'm3u') {
+    if ($queryType === 'm3u') {
         $content = preg_replace('/(#EXTM3U x-tvg-url=")(.*?)(")/', '$1' . $tvgUrl . '$3', $content, 1);
         $content = str_replace("tvg-logo=\"/data/icon/", "tvg-logo=\"$serverUrl/data/icon/", $content);
     }
 
     // 如果启用代理模式
     if (!empty($query_params['proxy'])) {
-        if ($query_params['type'] === 'm3u') {
+        if ($queryType === 'm3u') {
             $content = preg_replace_callback('/^(?!#)(.+)$/m', function ($m) use ($Config, $serverUrl) {
                 $url = trim($m[1]);
                 [$enc, $suffix] = strpos($url, '$') !== false ? explode('$', $url, 2) : [$url, ''];
                 $enc = urlencode(encryptUrl($enc, $Config['token']));
                 return $serverUrl . '/proxy.php?url=' . $enc . ($suffix !== '' ? '$' . $suffix : '');
             }, $content);
-        } elseif ($query_params['type'] === 'txt') {
+        } elseif ($queryType === 'txt') {
             $content = preg_replace_callback('/^([^,#]+),(.+)$/m', function ($m) use ($Config, $serverUrl) {
                 $url  = trim($m[2]);
                 [$enc, $suffix] = strpos($url, '$') !== false ? explode('$', $url, 2) : [$url, ''];
@@ -354,13 +355,37 @@ function liveFetchHandler($query_params) {
     exit;
 }
 
+// 处理脚本请求
+function scriptHandler($query_params) {
+    global $scriptsDir;
+
+    $scriptPath = $scriptsDir . ($query_params['url'] ?? '');
+    if (!is_file($scriptPath)) {
+        http_response_code(404);
+        exit('Script not found');
+    }
+
+    header('Cache-Control: no-store, no-cache, must-revalidate');
+    header('Pragma: no-cache');
+
+    ob_start();
+    include $scriptPath;
+    echo ob_get_clean();
+    exit;
+}
+
 // 处理请求
 function fetchHandler($query_params) {
-    global $init, $db, $serverUrl, $Config;
+    global $init, $db, $serverUrl, $Config, $queryType;
 
     // 处理直播源请求
-    if (in_array($query_params['type'] ?? '', ['m3u', 'txt'])) {
+    if (in_array($queryType, ['m3u', 'txt'])) {
         liveFetchHandler($query_params);
+    }
+
+    // 处理脚本请求
+    if (($queryType) === 'php') {
+        scriptHandler($query_params);
     }
 
     // 获取并清理频道名称，繁体转换成简体
@@ -369,7 +394,7 @@ function fetchHandler($query_params) {
     $date = getFormatTime(preg_replace('/\D+/', '', $query_params['date'] ?? ''))['date'] ?? getNowDate();
 
     // 处理台标请求
-    if (($query_params['type'] ?? '') === 'icon') {
+    if (($queryType) === 'icon') {
         $iconUrl = iconUrlMatch([$cleanChannelName, $oriChannelName]);
         if ($iconUrl) {
             header("Location: " . preg_replace('#(/data/icon/.*)#', $serverUrl . '$1', $iconUrl));
@@ -383,7 +408,7 @@ function fetchHandler($query_params) {
     // 频道为空时，返回 xml.gz 文件
     if ($cleanChannelName === '') {
         if ($Config['gen_xml'] ?? 0) {
-            $type = $query_params['type'] ?? 'gz';
+            $type = $queryType ?? 'gz';
             $file = $type === 'gz' ? 't.xml.gz' : 't.xml';
             $contentType = $type === 'gz' ? 'application/gzip' : 'application/xml';
             header("Content-Type: $contentType");
