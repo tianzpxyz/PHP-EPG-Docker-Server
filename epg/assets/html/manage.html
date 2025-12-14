@@ -95,14 +95,16 @@
                                 <?= $h; ?>
                             </option>
                         <?php endfor; ?>
-                    </select>小时
+                    </select>
+                    <span>小时</span>
                     <select id="interval_minute" name="interval_minute" required>
                         <?php for ($m = 0; $m < 60; $m++): ?>
                             <option value="<?= $m; ?>" <?= (intval($Config['interval_time']) % 3600) / 60 == $m ? 'selected' : ''; ?>>
                                 <?= $m; ?>
                             </option>
                         <?php endfor; ?>
-                    </select>分钟
+                    </select>
+                    <span>分钟</span>
                 </div>
             </div>
         </div><br>
@@ -116,7 +118,7 @@
             <button type="button" onclick="showModal('cron')">定时日志</button>
             <button type="button" onclick="showModal('update')">更新日志</button>
             <button type="button" id="accessLogBtn" onclick="showAccessLogModal()" 
-                style="display: <?= (@$Config['access_log_enable'] == 1) ? 'inline-block' : 'none'; ?>;">
+                style="display: <?= ($Config['access_log_enable'] ?? 1) ? 'inline-block' : 'none'; ?>;">
                 访问日志
             </button>
             <button type="button" onclick="showModal('moresetting')">更多设置</button>
@@ -135,10 +137,7 @@
         版本日志
     </a>
     <a onclick="showHelpModal();">使用说明</a>
-    <a onclick="showDonationImage()">☕打赏</a>
-    <a href="https://gitee.com/taksssss/iptv-tool/blob/main/DONATIONS.md" target="_blank" style="text-decoration: none;">
-        🌹鸣谢
-    </a>
+    <a onclick="showDonationImage();" style="color: red; font-weight: bold;">☕打赏</a>
 </div>
 
 <!-- 消息模态框 -->
@@ -827,9 +826,9 @@
             </div>
             <div class="column">
                 <label for="access_log_enable">访问日志：</label>
-                <select id="access_log_enable" name="access_log_enable" required onchange="debugMode(this)">
-                    <option value="1" <?php if (@$Config['access_log_enable'] == 1) echo 'selected'; ?>>是</option>
-                    <option value="0" <?php if (($Config['access_log_enable'] ?? 0) == 0) echo 'selected'; ?>>否</option>
+                <select id="access_log_enable" name="access_log_enable" required onchange="accessLogEnable(this)">
+                    <option value="1" <?= ($Config['access_log_enable'] ?? 1) == 1 ? 'selected' : '' ?>>是</option>
+                    <option value="0" <?= ($Config['access_log_enable'] ?? 1) == 0 ? 'selected' : '' ?>>否</option>
                 </select>
             </div>
             <div class="column">

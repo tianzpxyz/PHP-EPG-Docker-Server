@@ -314,7 +314,7 @@ function downloadData($sourceUrl, $userAgent = '', $timeout = 120, $connectTimeo
 // 日志记录函数
 function logMessage(&$log_messages, $message, $error = false) {
     $msg = date("[y-m-d H:i:s]") . ' ' . ($error 
-        ? '<span style="color:red; font-weight:bold">' . htmlspecialchars($message) . '</span>' 
+        ? '<span style="color:red; font-weight:bold; user-select:text;">' . htmlspecialchars($message) . '</span>' 
         : htmlspecialchars($message));
     $log_messages[] = $msg;
     echo $msg . "<br>";
