@@ -1107,12 +1107,12 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                 'disable'     => $disable
             ] = $row;
             $row['rawGroupTitle'] = $groupTitle;
+            $newChannelData[] = $row;
 
             // 过滤重复数据
             $channelKey = $groupPrefix . $groupTitle . $channelName . $streamUrl;
             if (!isset($processedChannelData[$channelKey]) && !$disable) {
                 $processedChannelData[$channelKey] = true;
-                $newChannelData[] = $row;
             } else {
                 continue;
             }
