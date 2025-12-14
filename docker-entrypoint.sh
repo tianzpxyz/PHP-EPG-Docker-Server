@@ -61,18 +61,12 @@ echo "Generating Nginx configuration..."
 cat <<'EOF' > /etc/nginx/common-locations.conf
 autoindex off;
 
-# Block /data except icon, scripts directory
+# Block /data except icon directory
 location ^~ /data/ {
     deny all;
 }
 location ^~ /data/icon/ {
     allow all;
-}
-location ^~ /data/scripts/ {
-    allow all;
-    location ~ \.php$ {
-        include /etc/nginx/php-fastcgi.conf;
-    }
 }
 
 # Rewrite endpoints
