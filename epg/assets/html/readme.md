@@ -44,7 +44,8 @@ IP 列表：点击后可修改；可设置为「黑名单模式」、「白名�
 Memcached：已移除相关设置，默认打开，缓存在更新数据时清除
 
 ### 额外提示
-- 可自行上传脚本至 `/data/scripts` 目录，内部可使用 `/data/scripts/xxx.php` 访问
+- 可自行上传脚本至 `/data/scripts` 目录，使用以下接口访问（访问限制跟直播源一致）：  
+`http://xxx.xx/index.php?type=php&url=xxx.php&token=xxx&options=xxx`  
 - `t.xml`, `t.xml.gz`, `tv.m3u`, `tv.txt` 可使用以下接口访问：  
 `http://xxx.xx/index.php?type=xxx`  
 `type` 分别为 `xml`, `gz`, `m3u`, `txt`
