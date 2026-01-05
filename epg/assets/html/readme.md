@@ -33,8 +33,8 @@
 xml 内容：默认「预告数据」，仅今日及后面内容，「所有数据」包含所有内容  
 数据导入导出：包含 `/data/` 文件夹的所有数据  
 返回精彩节目：无数据时返回「精彩节目」用于回放，默认关闭  
-Token 范围：点击后可修改 Token；可设置范围，默认「直播源」  
-User-Agent 范围：点击后可修改 UA，可用英文逗号分隔；可设置范围，默认「无」  
+Token 范围：点击后可修改 Token；可设置范围，默认「直播源」；支持 `regex:`  
+User-Agent 范围：点击后可修改 UA，可用英文逗号分隔；可设置范围，默认「无」；支持 `regex:`  
 繁體转简体：默认「仅频道名」，可选「所有信息」，可「关闭」（将不支持繁简频道匹配）  
 时区转换：默认「关闭」，可按需选择目标时区  
 IP 列表：点击后可修改；可设置为「黑名单模式」、「白名单模式」，默认「不使用」  
@@ -45,7 +45,7 @@ Memcached：已移除相关设置，默认打开，缓存在更新数据时清�
 
 ### 额外提示
 - 可自行上传脚本至 `/data/scripts` 目录，使用以下接口访问（访问限制跟直播源一致）：  
-`http://xxx.xx/index.php?type=php&url=xxx.php&token=xxx&options=xxx`  
+`http://xxx.xx/index.php?type=php&url=xxx.php&token=xxx&param=xxx`  
 - `t.xml`, `t.xml.gz`, `tv.m3u`, `tv.txt` 可使用以下接口访问：  
 `http://xxx.xx/index.php?type=xxx`  
 `type` 分别为 `xml`, `gz`, `m3u`, `txt`
