@@ -318,10 +318,7 @@ function showExecResult(fileName, callback, fullSize = true) {
 
     // 创建 XMLHttpRequest 对象
     const xhr = new XMLHttpRequest();
-    xhr.open('GET', `${fileName}`, true);
-
-    // 显式设置 X-Requested-With 请求头
-    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    xhr.open('GET', fileName, true);
 
     // 处理接收到的数据
     xhr.onprogress = function () {
@@ -330,12 +327,9 @@ function showExecResult(fileName, callback, fullSize = true) {
     };
 
     xhr.onload = function () {
-        if (xhr.status === 200) {
-            // 确保执行完成后调用回调
-            if (typeof callback === 'function') {
-                callback();
-            }
-        } else {
+        if (xhr.status === 200 && typeof callback === 'function') {
+            callback();
+        } else if (xhr.status !== 200) {
             wrapper.innerHTML += '<p>检测失败，请检查服务器。</p>';
         }
     };
@@ -641,7 +635,7 @@ function formatLogLine(text) {
 
     // 如果包含「访问被拒绝」，整行加粗+标红
     if (text.includes('访问被拒绝')) {
-        result = `<span style="color:red; font-weight:bold;">${result}</span>`;
+        result = `<span style="color:red; font-weight:bold; user-select:text;">${result}</span>`;
     }
 
     return result;
@@ -1512,8 +1506,7 @@ function saveLiveSourceInfo() {
             live_tvg_logo_enable: liveTvgLogoEnable,
             live_tvg_id_enable: liveTvgIdEnable,
             live_tvg_name_enable: liveTvgNameEnable,
-            content: JSON.stringify(dataToSend),
-            batch_update: 'true'
+            content: JSON.stringify(dataToSend)
         })
     })
     .then(response => response.json())
@@ -1659,7 +1652,7 @@ async function showLiveUrl() {
         const token      = configData.token.split('\n')[0];
         const tokenMd5   = configData.token_md5;
         const tokenRange = parseInt(configData.token_range, 10);
-        const redirect = serverData.redirect ? true : false;
+        const rewriteEnable = serverData.rewrite_enable ? true : false;
 
         // live_source_config 仍从页面 select/input 获取
         const liveSourceElem = document.getElementById('live_source_config');
@@ -1669,8 +1662,8 @@ async function showLiveUrl() {
         const urlParam = (configValue === 'default') ? '' : `url=${configValue}`;
         const query = [tokenStr, urlParam].filter(Boolean).join('&');
 
-        const m3uPath = redirect ? '/tv.m3u' : '/index.php?type=m3u';
-        const txtPath = redirect ? '/tv.txt' : '/index.php?type=txt';
+        const m3uPath = rewriteEnable ? '/tv.m3u' : '/index.php?type=m3u';
+        const txtPath = rewriteEnable ? '/tv.txt' : '/index.php?type=txt';
 
         function buildUrl(base, path, query) {
             let url = base + path;
@@ -2002,10 +1995,10 @@ async function parseSource() {
                     const response = await fetch('manage.php?download_source_data=1&url=' + encodeURIComponent(url));
                     const result = await response.json(); // 解析 JSON 响应
                     
-                    if (result.success && !/not found/i.test(result.data)) {
+                    if (result.success) {
                         text += '\n' + result.data;
                     } else {
-                        showMessageModal(/not found/i.test(result.data) ? `Error: ${result.data}` : `${result.message}：\n${url}`);
+                        showMessageModal(`${result.message}：\n${url}`);
                     }
                 } catch (error) {
                     showMessageModal(`无法获取URL内容: ${url}\n错误信息: ${error.message}`); // 显示网络错误信息
@@ -2227,21 +2220,21 @@ async function showTokenRangeMessage() {
 
         const serverUrl  = serverData.server_url;
         const tokenFull  = configData.token;
-        const redirect = serverData.redirect ? true : false;
+        const rewriteEnable = serverData.rewrite_enable ? true : false;
         const token = tokenFull.split('\n')[0];
         let message = '';
 
         if (tokenRange === "1" || tokenRange === "3") {
-            const m3u = redirect ? `${serverUrl}/tv.m3u?token=${token}` : `${serverUrl}/index.php?type=m3u&token=${token}`;
-            const txt = redirect ? `${serverUrl}/tv.txt?token=${token}` : `${serverUrl}/index.php?type=txt&token=${token}`;
+            const m3u = rewriteEnable ? `${serverUrl}/tv.m3u?token=${token}` : `${serverUrl}/index.php?type=m3u&token=${token}`;
+            const txt = rewriteEnable ? `${serverUrl}/tv.txt?token=${token}` : `${serverUrl}/index.php?type=txt&token=${token}`;
             message += `直播源地址：<br><a href="${m3u}" target="_blank">${m3u}</a><br>
                         <a href="${txt}" target="_blank">${txt}</a>`;
         }
 
         if (tokenRange === "2" || tokenRange === "3") {
             if (message) message += '<br>';
-            const xml = redirect ? `${serverUrl}/t.xml?token=${token}` : `${serverUrl}/index.php?type=xml&token=${token}`;
-            const gz = redirect ? `${serverUrl}/t.xml.gz?token=${token}` : `${serverUrl}/index.php?type=gz&token=${token}`;
+            const xml = rewriteEnable ? `${serverUrl}/t.xml?token=${token}` : `${serverUrl}/index.php?type=xml&token=${token}`;
+            const gz = rewriteEnable ? `${serverUrl}/t.xml.gz?token=${token}` : `${serverUrl}/index.php?type=gz&token=${token}`;
             message += `EPG地址：<br><a href="${serverUrl}/index.php?token=${token}" target="_blank">${serverUrl}/index.php?token=${token}</a><br>
                         <a href="${xml}" target="_blank">${xml}</a><br>
                         <a href="${gz}" target="_blank">${gz}</a>`;
@@ -2300,7 +2293,7 @@ function updateNotifyInfo() {
 }
 
 // 监听 access_log_enable 更变
-function debugMode(selectElem) {
+function accessLogEnable(selectElem) {
     document.getElementById("accessLogBtn").style.display = selectElem.value === "1" ? "inline-block" : "none";
 }
 
