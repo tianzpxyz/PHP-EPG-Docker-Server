@@ -255,60 +255,72 @@ function iconUrlMatch($channels, $getDefault = true) {
     return $getDefault ? ($Config['default_icon'] ?? null) : null;
 }
 
-// 下载文件
-function downloadData($sourceUrl, $userAgent = '', $timeout = 120, $connectTimeout = 10, $retry = 3, $postData = null) {
-    $data = false;
-    $error = '';
-    $mtime = 0;
+// 发送 http 请求
+function httpRequest($url, $userAgent = '', $timeout = 120, $connectTimeout = 10, $retry = 3, $postData = null) {
+    $ch = curl_init($url);
 
-    $ch = curl_init($sourceUrl);
     $options = [
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => false,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_TIMEOUT => $timeout,
+        CURLOPT_MAXREDIRS      => 5,
+        CURLOPT_TIMEOUT        => $timeout,
         CURLOPT_CONNECTTIMEOUT => $connectTimeout,
-        CURLOPT_HEADER => true,
-        CURLOPT_HTTPHEADER => [
-            'User-Agent: ' . ($userAgent ?: 
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36'),
-            'Accept: */*',
-            'Connection: keep-alive'
+        CURLOPT_HEADER         => true,
+        CURLOPT_ENCODING       => '',
+        CURLOPT_HTTPHEADER     => [
+            'User-Agent: ' . ($userAgent ?: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'),
+            'Accept: */*'
         ]
     ];
 
     if ($postData !== null) {
         $options[CURLOPT_POST] = true;
-        $options[CURLOPT_POSTFIELDS] = $postData;
+        $options[CURLOPT_POSTFIELDS] = is_array($postData) ? http_build_query($postData) : $postData;
     }
 
     curl_setopt_array($ch, $options);
 
-    while ($retry--) {
+    $lastError = '';
+    while ($retry-- > 0) {
         $response = curl_exec($ch);
 
         if ($response === false) {
-            $error = curl_error($ch);
-            continue;
+            $lastError = curl_error($ch);
+            continue; 
         }
 
-        $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-        $headerStr = substr($response, 0, $headerSize);
-        $data = substr($response, $headerSize);
+        $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        
+        // 判断状态码是否为 200
+        if ($status === 200) {
+            $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+            $headerStr  = substr($response, 0, $headerSize);
+            $body       = substr($response, $headerSize);
 
-        // 获取 Last-Modified
-        if (preg_match('/Last-Modified:\s*(.+)\r?\n/i', $headerStr, $matches)) {
-            $parsed = strtotime(trim($matches[1]));
-            if ($parsed !== false) $mtime = $parsed;
+            // 匹配修改时间
+            $mtime = preg_match('/Last-Modified:\s*(.+)\r?\n/i', $headerStr, $matches) ? strtotime(trim($matches[1])) : null;
+
+            curl_close($ch);
+            return [
+                'success' => true,
+                'body'    => $body,
+                'error'   => '',
+                'mtime'   => $mtime,
+            ];
+        } else {
+            $lastError = "HTTP Status: $status";
         }
-
-        curl_close($ch);
-        return [$data, '', $mtime];
     }
 
     curl_close($ch);
-    return [false, $error, 0];
+    return [
+        'success' => false,
+        'body'    => null,
+        'error'   => $lastError ?: 'Request failed',
+        'mtime'   => null,
+    ];
 }
 
 // 日志记录函数
@@ -416,16 +428,18 @@ function insertDataToDatabase($channelsData, $db, $sourceUrl) {
 // 获取已存在的数据
 function getExistingData() {
     global $db, $Config;
-    $existingData = [];
 
     $liveSourceConfig = $Config['live_source_config'] ?? 'default';
-    $stmt = $db->prepare("SELECT * FROM channels WHERE modified = 1 AND config = ?");
-    $stmt->execute([$liveSourceConfig]);
-    if ($stmt) {
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            if (!empty($row['tag'])) {
-                $existingData[$row['tag']] = $row;
-            }
+    $configs = [$liveSourceConfig, $liveSourceConfig . '__HISTORY__'];
+    $placeholders = implode(',', array_fill(0, count($configs), '?'));
+    $sql = "SELECT * FROM channels WHERE modified = 1 AND config IN ($placeholders)";
+    $stmt = $db->prepare($sql);
+    $stmt->execute($configs);
+
+    $existingData = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        if (!empty($row['tag'])) {
+            $existingData[$row['tag']] = $row;
         }
     }
     return $existingData;
@@ -588,40 +602,51 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                     break;
             }
         }
-        
-        // 获取 URL 内容
+
         $error = '';
         $urlContent = '';
-        
-        if (stripos($sourceUrl, '/data/live/file/') === 0) {
-            $urlContent = @file_get_contents(__DIR__ . $sourceUrl);
-            if ($urlContent === false) {
-                $error = error_get_last()['message'] ?? 'file_get_contents failed with unknown error';
+        $success = false;
+        $retry = 0;
+        $maxRetries = 5;
+        $retryDelay = 5;
+        $isLocalFile = (stripos($sourceUrl, '/data/live/file/') === 0);
+
+        if ($isLocalFile) {
+            $fullPath = __DIR__ . $sourceUrl;
+            if (file_exists($fullPath)) {
+                $urlContent = @file_get_contents($fullPath);
+                if ($urlContent !== false) {
+                    $success = true;
+                } else {
+                    $error = error_get_last()['message'] ?? 'Failed to read local file';
+                }
+            } else {
+                $error = "Local file not found: $fullPath";
             }
         } else {
-            [$urlContent, $error] = downloadData($sourceUrl, $userAgent, 10, 10, 3);
-        }
-        
-        $fileName = md5(urlencode($sourceUrl));  // 用 MD5 对 URL 进行命名
-        $localFilePath = $liveFileDir . $fileName . '.m3u';
-        
-        // 尝试获取内容，最多重试5次，每次等待5秒
-        for ($retry = 0; $retry < 5; $retry++) {
-            if (!$urlContent || preg_match('/^(#EXTM3U|#EXTINF)|#genre#|[^,]+,.+/i', $urlContent)) break;
-            sleep(5);
-            [$urlContent, $error] = downloadData($sourceUrl, $userAgent, 10, 10, 3);
+            for ($retry = 0; $retry < $maxRetries; $retry++) {
+                ['body' => $urlContent, 'error' => $error, 'success' => $success] = httpRequest($sourceUrl, $userAgent, 10, 10, 3);
+                if ($success) break;
+                sleep($retryDelay);
+            }
         }
 
+        $fileName = md5($sourceUrl);  // 用 MD5 对 URL 进行命名
+        $localFilePath = $liveFileDir . $fileName . '_raw.txt';
+        
+        // 内容合法性正则
+        $validPattern = '/^(#EXTM3U|#EXTINF)|#genre#|[^,]+,.+/i';
         if ($retry) $errorLog .= "$sourceUrl 重试 $retry 次<br>";
         
-        // 最终回退缓存或报错
-        if (!$urlContent || !preg_match('/^(#EXTM3U|#EXTINF)|#genre#|[^,]+,.+/i', $urlContent)) {
+        // 如果最终成功，写入原始数据缓存
+        if ($success && preg_match($validPattern, $urlContent)) {
+            file_put_contents($localFilePath, $urlContent);
+        } else {
+            // 回退读取缓存
             $urlContent = @file_get_contents($localFilePath) ?: '';
             if ($urlContent) {
                 $errorLog .= "$sourceUrl 使用本地缓存<br>";
-                $black_list[] = '更新时间'; // 避免重复生成更新时间
-            }
-            else {
+            } else {
                 $errorLog .= "解析失败：$sourceUrl<br>错误：" . ($error ?: '空内容或格式不符') . "<br>";
                 continue;
             }
@@ -641,7 +666,28 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                 // JSON格式
                 foreach ($jsonRules as $search => $replace) {
                     $replace = str_replace("\\n", "\n", $replace); // 识别 \n
-                    $urlContent = str_replace($search, $replace, $urlContent);
+                    
+                    // 正则规则：regex: 前缀
+                    if (strpos($search, 'regex:') === 0) {
+                        $pattern = substr($search, 6);
+
+                        // 正则合法性校验
+                        if (@preg_match($pattern, '') === false) {
+                            $errorLog .= "正则表达式无效：{$pattern}\n";
+                            continue;
+                        }
+
+                        $result = preg_replace($pattern, $replace, $urlContent);
+
+                        if ($result === null) {
+                            $errorLog .= "正则替换失败：{$pattern}\n";
+                        } else {
+                            $urlContent = $result;
+                        }
+                    } else {
+                        // 普通字符串替换
+                        $urlContent = str_replace($search, $replace, $urlContent);
+                    }
                 }
             }
         }
@@ -894,12 +940,14 @@ function extractExtInfOpt(&$streamUrl) {
 
 // 生成 M3U 和 TXT 文件
 function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
+    if (empty($channelData)) return; // 数据为空时不覆盖原数据
+
     global $db, $Config, $liveDir;
 
     // 获取配置
     $fuzzyMatchingEnable = $Config['live_fuzzy_match'] ?? 1;
-    $txtCommentEnabled = $Config['live_url_comment'] === 1 || $Config['live_url_comment'] === 3 ?? 0;
-    $m3uCommentEnabled = $Config['live_url_comment'] === 2 || $Config['live_url_comment'] === 3 ?? 0;
+    $txtCommentEnabled = ($Config['live_url_comment'] === 1 || $Config['live_url_comment'] === 3) && $fileName === 'tv';
+    $m3uCommentEnabled = ($Config['live_url_comment'] === 2 || $Config['live_url_comment'] === 3) && $fileName === 'tv';
 
     // 读取 template.json 文件内容
     $templateContent = '';
@@ -1232,7 +1280,7 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
 
     // 如果 fileName 是 tv，则只保存加密名的文件，并更新数据库
     if ($fileName === 'tv') {
-        $fileName = 'file/' . md5(urlencode($liveSourceConfig));
+        $fileName = 'file/' . md5($liveSourceConfig);
 
         // 删除当前 liveSourceConfig 对应的旧数据
         $stmt = $db->prepare("DELETE FROM channels WHERE config = ?");
