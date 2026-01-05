@@ -9,6 +9,13 @@
  * GitHub: https://github.com/taksssss/iptv-tool
  */
 
+// 检测是否有运行权限
+session_start();
+if (php_sapi_name() !== 'cli' && (empty($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true)) {
+    http_response_code(403);
+    exit('无访问权限，请先登录。');
+}
+
 // 禁用 PHP 输出缓冲
 ob_implicit_flush(true);
 @ob_end_flush();
@@ -26,13 +33,6 @@ require_once 'scraper.php';
 
 // 设置超时时间为20分钟
 set_time_limit(20*60);
-
-// 检测是否为 AJAX 请求或 CLI 运行
-if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
-    && php_sapi_name() !== 'cli') {
-    http_response_code(403); // 返回403禁止访问
-    exit('禁止直接访问，请修改update.php');
-}
 
 // 获取目标时区
 $target_time_zone = $Config['target_time_zone'] ?? 0;
@@ -62,7 +62,7 @@ function deleteOldData($db, $thresholdDate, &$log_messages) {
     }
 
     // 清理访问日志
-    if ($Config['access_log_enable']) {
+    if ($Config['access_log_enable'] ?? 1) {
         $thresholdTimestamp = strtotime($thresholdDate . ' 00:00:00');
         $thresholdStr = date('Y-m-d H:i:s', $thresholdTimestamp);
     
@@ -185,8 +185,8 @@ function getChannelBindEPG() {
 // 下载 XML 数据并存入数据库
 function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $white_list, $black_list, $time_offset, $replacePattern, $bindPattern) {
     global $Config;
-    [$xml_data, $error, $mtime] = downloadData($xml_url, $userAgent);
-    if ($xml_data !== false) {
+    ['body'  => $xml_data, 'error' => $error, 'mtime' => $mtime, 'success' => $success] = httpRequest($xml_url, $userAgent);
+    if ($success) {
         if (substr($xml_data, 0, 2) === "\x1F\x8B") { // 通过魔数判断 .gz 文件
             $mtime = $mtime ?: unpack('V', substr($xml_data, 4, 4))[1];
             if (!($xml_data = gzdecode($xml_data))) {
@@ -220,7 +220,7 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
             }
         }
 
-        // 应用多个字符串替换规则（JSON格式或老格式 a->b,...）
+        // 应用多个字符串替换规则
         if (!empty($replacePattern)) {
             $jsonRules = json_decode($replacePattern, true);
             
@@ -228,14 +228,6 @@ function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $
                 // JSON格式
                 foreach ($jsonRules as $search => $replace) {
                     $xml_data = str_replace($search, $replace, $xml_data);
-                }
-            } elseif (strpos($replacePattern, '->') !== false) {
-                // 兼容老格式
-                foreach (explode(',', $replacePattern) as $rule) {
-                    if (strpos($rule, '->') !== false) {
-                        [$search, $replace] = array_map('trim', explode('->', $rule, 2));
-                        $xml_data = str_replace($search, $replace, $xml_data);
-                    }
                 }
             }
         }
@@ -566,8 +558,8 @@ function sc_send($title, $desp = '', $key = '[SENDKEY]', $tags = '', $short = ''
         ? "https://" . preg_replace('/^sctp(\d+)t.*$/', '$1', $key) . ".push.ft07.com/send/{$key}.send"
         : "https://sctapi.ftqq.com/{$key}.send";
 
-    list($response, $error) = downloadData($url, '', 10, 5, 1, $postdata);
-    return $response ?: '';
+    $result = httpRequest($url, '', 10, 5, 1, $postdata);
+    return $result['success'] ? $result['body'] : '';
 }
 
 // 记录开始时间
