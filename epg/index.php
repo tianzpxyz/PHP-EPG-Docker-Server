@@ -15,6 +15,7 @@ require_once 'public.php';
 
 // 解析参数
 $query = $_SERVER['QUERY_STRING'] ?? '';
+$query = str_replace('?', '&', $query);
 $query_params = [];
 foreach (explode('&', $query) as $pair) {
     if ($pair === '') continue;
