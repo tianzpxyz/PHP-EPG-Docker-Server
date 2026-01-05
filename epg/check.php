@@ -21,11 +21,11 @@
  * GitHub: https://github.com/taksssss/iptv-tool
  */
 
-// 检测是否为 AJAX 请求或 CLI 运行
-if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
-    && php_sapi_name() !== 'cli') {
-    http_response_code(403); // 返回403禁止访问
-    exit('禁止直接访问');
+// 检测是否有运行权限
+session_start();
+if (php_sapi_name() !== 'cli' && (empty($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true)) {
+    http_response_code(403);
+    exit('无访问权限，请先登录。');
 }
 
 // 检测 ffmpeg 是否安装
@@ -59,6 +59,7 @@ $minHeight = $Config['min_resolution_height'] ?? 0;
 $urlsLimit = $Config['urls_limit'] ?? 0;
 $sortByDelay = $Config['sort_by_delay'] ?? 0;
 $liveSourceConfig = $Config['live_source_config'] ?? 'default';
+$token = $Config['token'];
 
 // cleanMode 参数为 1 时，清除测速数据
 if (!empty($_GET['cleanMode'])) {
@@ -112,7 +113,20 @@ $total = count($channels);
 $testedUrls = [];
 
 foreach ($channels as $i => $channel) {
-    $streamUrl = strtok($channel[$streamUrlIndex], '$'); // 处理带有 $ 的 URL
+    // 多行只取最后一行
+    $oriUrl = $channel[$streamUrlIndex];
+    $raw = preg_split('/\r\n|\r|\n/', trim($oriUrl));
+    $raw = trim(end($raw));
+
+    // 处理 #NOPROXY、#PROXY
+    $raw = str_replace('#NOPROXY', '', $raw);
+    if (preg_match('/#PROXY=([^#]+)/', $raw, $m)) {
+        $raw = decryptUrl(urldecode($m[1]), $token);
+    }
+
+    // 处理带有 $ 的 URL
+    $streamUrl = strtok($raw, '$');
+
     $channelName = $channelNameIndex !== false ? $channel[$channelNameIndex] : '未知频道';
 
     // 跳过空的 streamUrl
@@ -126,6 +140,10 @@ foreach ($channels as $i => $channel) {
         continue;
     }
 
+    // 初始化变量
+    $resolution = $speed = 'N/A';
+    $disable = $modified = 1;
+
     if (isset($testedUrls[$streamUrl])) {
         // 如果已经测速过，直接复用结果
         [$resolution, $speed, $disable, $modified] = $testedUrls[$streamUrl];
@@ -138,13 +156,9 @@ foreach ($channels as $i => $channel) {
         $duration = round((microtime(true) - $startTime) * 1000);
 
         if ($returnVar !== 0) {
-            $resolution = $speed = 'N/A';
-            $disable = 1;
-            $modified = 1;
             echo '<strong><span style="color: red;">无法获取流信息，已停用</span></strong><br><br>';
         } else {
             $speed = $duration;
-            $resolution = 'N/A';
             $disable = 0;
             $modified = 0;
 
@@ -167,14 +181,14 @@ foreach ($channels as $i => $channel) {
 
         // 缓存测速结果
         $testedUrls[$streamUrl] = [$resolution, $speed, $disable, $modified];
-
-        // 写入数据库
-        $stmt = $db->prepare(
-            ($Config['db_type'] === 'sqlite' ? "INSERT OR REPLACE" : "REPLACE") .
-            " INTO channels_info (streamUrl, resolution, speed) VALUES (?, ?, ?)"
-        );
-        $stmt->execute([$streamUrl, $resolution, $speed]);
     }
+
+    // 写入数据库
+    $stmt = $db->prepare(
+        ($Config['db_type'] === 'sqlite' ? "INSERT OR REPLACE" : "REPLACE") .
+        " INTO channels_info (streamUrl, resolution, speed) VALUES (?, ?, ?)"
+    );
+    $stmt->execute([$oriUrl, $resolution, $speed]);
 
     // 更新内存映射和频道状态
     $channelsInfoMap[$streamUrl] = is_numeric($speed) ? (int)$speed : PHP_INT_MAX;
