@@ -13,10 +13,14 @@
 // 引入公共脚本
 require_once 'public.php';
 
-// 解析参数，替换多余的 '?' 为 '&'，并特殊处理 5+ 频道
+// 解析参数
 $query = $_SERVER['QUERY_STRING'] ?? '';
-$query = str_replace(['?', '5+'], ['&', '5%2B'], $query);
-parse_str($query, $query_params);
+$query_params = [];
+foreach (explode('&', $query) as $pair) {
+    if ($pair === '') continue;
+    [$k, $v] = explode('=', $pair, 2) + ['', ''];
+    $query_params[rawurldecode($k)] = rawurldecode($v);
+}
 
 // 判断是否允许访问
 function isAllowed($value, array $allowedList, int $range, bool $isLive): bool
@@ -115,7 +119,7 @@ if (!$accessDenied && !empty($Config['ip_list_mode'])) {
 }
 
 // 记录访问日志
-if (!empty($Config['access_log_enable'])) {
+if ($Config['access_log_enable'] ?? 1) {
     $time = date('Y-m-d H:i:s');
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
@@ -307,7 +311,7 @@ function liveFetchHandler($query_params) {
     // 计算文件路径
     $isValidFile = false;
     $url = $query_params['url'] ?: 'default';
-    $filePath = sprintf('%s/%s.%s', $liveFileDir, md5(urlencode($url)), $queryType);
+    $filePath = sprintf('%s/%s.%s', $liveFileDir, md5($url), $queryType);
     if (($query_params['latest'] === '1' && doParseSourceInfo($url)) === true || 
         file_exists($filePath) || doParseSourceInfo($url) === true) { // 判断是否需要获取最新文件
         $isValidFile = true;
@@ -323,7 +327,8 @@ function liveFetchHandler($query_params) {
 
     // 处理 TVG URL 替换
     $tvgUrlToken = ($tokenRange == "2" || $tokenRange == "3") ? "&token=$token" : '';
-    $tvgUrl = $serverUrl . '/index.php?type=gz' . $tvgUrlToken;
+    $xmlPath = ($_SERVER['REWRITE_ENABLE'] ?? 0) ? '/t.xml.gz' : '/index.php?type=gz';
+    $tvgUrl = $serverUrl . $xmlPath . $tvgUrlToken;
     if ($queryType === 'm3u') {
         $content = preg_replace('/(#EXTM3U x-tvg-url=")(.*?)(")/', '$1' . $tvgUrl . '$3', $content, 1);
         $content = str_replace("tvg-logo=\"/data/icon/", "tvg-logo=\"$serverUrl/data/icon/", $content);
@@ -362,7 +367,7 @@ function scriptHandler($query_params) {
     $scriptPath = $scriptsDir . ($query_params['url'] ?? '');
     if (!is_file($scriptPath)) {
         http_response_code(404);
-        exit('Script not found');
+        exit('脚本不存在');
     }
 
     header('Cache-Control: no-store, no-cache, must-revalidate');
