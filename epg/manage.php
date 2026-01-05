@@ -73,10 +73,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     if ($password === $Config['manage_password']) {
         // 密码正确，设置会话变量
         $_SESSION['loggedin'] = true;
-
-        // 设置会话变量，表明用户可以访问 phpliteadmin.php 、 tinyfilemanager.php
-        $_SESSION['can_access_phpliteadmin'] = true;
-        $_SESSION['can_access_tinyfilemanager'] = true;
     } else {
         $error = "密码错误";
     }
@@ -205,15 +201,9 @@ try {
                 break;
 
             case 'get_env':
-                // 获取 serverUrl、redirect
-                $redirect = false;
-                $testUrl = 'http://127.0.0.1/tv.m3u';
-                $context = stream_context_create(['http' => ['method' => 'HEAD']]);
-                $headers = @get_headers($testUrl, 1, $context);
-                if ($headers && strpos($headers[0], '404') === false) {
-                    $redirect = true;
-                }
-                $dbResponse = ['server_url' => $serverUrl, 'redirect' => $redirect];
+                // 获取 serverUrl、rewriteEnable
+                $rewriteEnable = $_SERVER['REWRITE_ENABLE'] ?? 0;
+                $dbResponse = ['server_url' => $serverUrl, 'rewrite_enable' => $rewriteEnable];
                 break;
 
             case 'get_update_logs':
@@ -500,11 +490,11 @@ try {
                 // 下载直播源数据
                 $url = filter_var(($_GET['url']), FILTER_VALIDATE_URL);
                 if ($url) {
-                    $data = downloadData($url, '', 5);
-                    if ($data !== false) {
-                        $dbResponse = ['success' => true, 'data' => $data];
+                    $result = httpRequest($url, '', 5);
+                    if ($result['success']) {
+                        $dbResponse = ['success' => true, 'data' => $result['body']];
                     } else {
-                        $dbResponse = ['success' => false, 'message' => '无法获取URL内容'];
+                        $dbResponse = ['success' => false, 'message' => $result['error'] ?: '无法获取 URL 内容'];
                     }
                 } else {
                     $dbResponse = ['success' => false, 'message' => '无效的URL'];
@@ -539,7 +529,7 @@ try {
                         }
                     }
                 }
-                $id = md5(urlencode($config));
+                $id = md5($config);
                 foreach (['m3u', 'txt'] as $ext) {
                     @unlink("$liveFileDir{$id}.{$ext}");
                 }
@@ -572,7 +562,7 @@ try {
                     $matched = false;
                     foreach ($cleanUrls as $url) {
                         if (!$url) continue;
-                        $urlMd5 = md5(urlencode($url));
+                        $urlMd5 = md5($url);
                         if (stripos($fileRltPath, $url) !== false || stripos($fileRltPath, $urlMd5) !== false) {
                             $matched = true;
                             break;
@@ -588,6 +578,10 @@ try {
                 // 清除数据库中所有 channels.modified = 1 的记录（不分配置）
                 $stmt = $db->prepare("UPDATE channels SET modified = 0 WHERE modified = 1");
                 $stmt->execute();
+
+                // 清除数据库中所有 __HISTORY__ 记录（不分配置）
+                $stmt = $db->prepare("DELETE FROM channels WHERE config LIKE ?");
+                $stmt->execute(['%__HISTORY__%']);
             
                 // 返回清理结果
                 $dbResponse = [
@@ -1070,73 +1064,66 @@ try {
                 // 保存直播源信息
                 $content = json_decode($_POST['content'], true);
                 
-                // 检查是否为批量更新模式（仅更新修改的记录）
-                if (!empty($_POST['batch_update'])) {
-                    // 批量更新模式：仅更新传入的记录
-                    $liveSourceConfig = $_POST['live_source_config'];
+                // 批量更新模式：仅更新传入的记录
+                $liveSourceConfig = $_POST['live_source_config'];
+                
+                try {
+                    $db->beginTransaction();
                     
-                    try {
-                        $db->beginTransaction();
-                        
-                        foreach ($content as $item) {
-                            if (!isset($item['tag'])) continue;
+                    foreach ($content as $item) {
+                        $tag = $item['tag'] ?? null;
+                        if (!$tag) continue;
 
-                            // 基础更新字段
-                            $fields = [
-                                'groupPrefix = ?',
-                                'groupTitle = ?',
-                                'channelName = ?',
-                                'chsChannelName = ?',
-                                'iconUrl = ?',
-                                'tvgId = ?',
-                                'tvgName = ?',
-                                'disable = ?',
-                                'modified = ?',
-                            ];
+                        // 基础更新字段
+                        $fields = ['groupPrefix','groupTitle','channelName','chsChannelName','iconUrl',
+                                   'tvgId','tvgName','disable','modified','source'];
 
-                            $params = [
-                                $item['groupPrefix'] ?? '',
-                                $item['groupTitle'] ?? '',
-                                $item['channelName'] ?? '',
-                                $item['chsChannelName'] ?? '',
-                                $item['iconUrl'] ?? '',
-                                $item['tvgId'] ?? '',
-                                $item['tvgName'] ?? '',
-                                $item['disable'] ?? 0,
-                                $item['modified'] ?? 0,
-                            ];
-                            
-                            // tag_gen_mode != 1 时才更新 streamUrl
-                            if (($Config['tag_gen_mode'] ?? 0) != 1) {
-                                $fields[] = 'streamUrl = ?';
-                                $params[] = $item['streamUrl'] ?? '';
-                            }
-                            
-                            $params[] = $item['tag'];
-                            $params[] = $liveSourceConfig;
-                            $sql = "UPDATE channels SET " . implode(', ', $fields) . " WHERE tag = ? AND config = ?";
-                            $stmt = $db->prepare($sql);
-                            $stmt->execute($params);
+                        // 自动生成参数
+                        $baseParams = [];
+                        foreach ($fields as $f) {
+                            $baseParams[] = ($f === 'disable' || $f === 'modified') ? ($item[$f] ?? 0) : ($item[$f] ?? '');
                         }
-                        
-                        $db->commit();
-                        
-                        // 重新生成 M3U 和 TXT 文件（需要读取所有数据）
-                        $stmt = $db->prepare("SELECT * FROM channels WHERE config = ?");
-                        $stmt->execute([$liveSourceConfig]);
-                        $allChannels = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                        generateLiveFiles($allChannels, 'tv', $saveOnly = true);
-                        
-                        echo json_encode(['success' => true]);
-                    } catch (Exception $e) {
-                        $db->rollBack();
-                        http_response_code(500);
-                        echo json_encode(['success' => false, 'message' => '保存失败: ' . $e->getMessage()]);
+
+                        // tag_gen_mode != 1 时才更新 streamUrl
+                        if (($Config['tag_gen_mode'] ?? 0) != 1) {
+                            $fields[] = 'streamUrl';
+                            $baseParams[] = $item['streamUrl'] ?? '';
+                        }
+
+                        // 生成 UPDATE SQL
+                        $updateSql = "UPDATE channels SET " . implode(', ', array_map(function($f){ return $f . ' = ?'; }, $fields))
+                                   . " WHERE tag = ? AND config = ?";
+
+                        // 生成 INSERT SQL
+                        $insertFields = array_merge($fields, ['tag','config']);
+                        $insertSql = "INSERT INTO channels (" . implode(',', $insertFields) . ") VALUES ("
+                                  . rtrim(str_repeat('?,', count($insertFields)), ',') . ")";
+
+                        // 主配置 UPDATE
+                        $baseParams[] = $tag;
+                        $paramsMain = array_merge($baseParams, [$liveSourceConfig]);
+                        $db->prepare($updateSql)->execute($paramsMain);
+
+                        // HISTORY 配置 UPDATE / INSERT
+                        $historyConfig = $liveSourceConfig . '__HISTORY__';
+                        $paramsHistory = array_merge($baseParams, [$historyConfig]);
+                        $db->prepare("DELETE FROM channels WHERE tag = ? AND config = ?")->execute([$tag, $historyConfig]);
+                        $db->prepare($insertSql)->execute($paramsHistory);
                     }
-                } else {
-                    // 原有模式：全量保存（向后兼容）
-                    generateLiveFiles($content, 'tv', $saveOnly = true);
+
+                    $db->commit();
+
+                    // 重新生成 M3U 和 TXT 文件（需要读取所有数据）
+                    $stmt = $db->prepare("SELECT * FROM channels WHERE config = ?");
+                    $stmt->execute([$liveSourceConfig]);
+                    $allChannels = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    generateLiveFiles($allChannels, 'tv', $saveOnly = true);
+                    
                     echo json_encode(['success' => true]);
+                } catch (Exception $e) {
+                    $db->rollBack();
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'message' => '保存失败: ' . $e->getMessage()]);
                 }
                 exit;
 
@@ -1189,8 +1176,8 @@ try {
                         $db->commit();
                     }
 
-                    $oldId = md5(urlencode($old));
-                    $newId = md5(urlencode($new));
+                    $oldId = md5($old);
+                    $newId = md5($new);
                     foreach (['m3u', 'txt'] as $ext) {
                         $src = "{$liveFileDir}{$oldId}.{$ext}";
                         $dst = "{$liveFileDir}{$newId}.{$ext}";
