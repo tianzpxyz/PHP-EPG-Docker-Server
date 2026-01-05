@@ -4,13 +4,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!localStorage.getItem('hasVisitedBefore') && 
         (!document.getElementById('xml_urls')?.value.trim())) {
         showHelpModal();
-        localStorage.setItem('hasVisitedBefore', 'true');
+        localStorage.setItem('hasVisitedBefore', 1);
     }
 
     showModal('live', popup = false);
     showModal('channel', popup = false);
     showModal('update', popup = false);
-    showVersionLog(doCheckUpdate = true);
+    showVersionLog(doCheckUpdate = 1);
 });
 
 // 提交配置表单
@@ -350,7 +350,7 @@ function showExecResult(fileName, callback, fullSize = true) {
 }
 
 // 显示版本更新日志
-function showVersionLog(doCheckUpdate = false) {
+function showVersionLog(doCheckUpdate = 0) {
     fetch(`manage.php?get_version_log=1&do_check_update=${doCheckUpdate}`)
         .then(response => response.json())
         .then(data => {
@@ -458,7 +458,7 @@ function changeCachedType(selectElem) {
 
 // 通用：将字段写入 config.json
 function saveConfigField(params) {
-    params.update_config_field = 'true';
+    params.update_config_field = 1;
     return fetch('manage.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -830,7 +830,7 @@ function addIp(ip, type) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({
-                    save_content_to_file: 'true',
+                    save_content_to_file: 1,
                     file_path: `/data/${file}`,
                     content: [...set].join('\n')
                 })
@@ -928,7 +928,7 @@ function saveIpList() {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-            save_content_to_file: 'true',
+            save_content_to_file: 1,
             file_path: `/data/${file}`,
             content: textarea.value
         })
@@ -1476,7 +1476,7 @@ function saveLiveSourceFile() {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-            save_content_to_file: 'true',
+            save_content_to_file: 1,
             file_path: '/data/live/source.json',
             content: JSON.stringify(updateObj)
         })
@@ -1501,7 +1501,7 @@ function saveLiveSourceInfo() {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-            save_source_info: 'true',
+            save_source_info: 1,
             live_source_config: liveSourceConfig,
             live_tvg_logo_enable: liveTvgLogoEnable,
             live_tvg_id_enable: liveTvgIdEnable,
@@ -1563,7 +1563,7 @@ function openLiveSourceConfigDialog(isNew = 0) {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
-                create_source_config: 'true',
+                create_source_config: 1,
                 old_source_config: oldConfig,
                 new_source_config: liveSourceConfig,
                 is_new: isNew
@@ -1727,7 +1727,7 @@ function saveLiveTemplate() {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-            save_content_to_file: 'true',
+            save_content_to_file: 1,
             file_path: '/data/live/template.json',
             content: JSON.stringify(updateObj)
         })
@@ -2106,7 +2106,7 @@ function updateIconListJsonFile(notify = false) {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
             body: new URLSearchParams({
-                update_icon_list: true,
+                update_icon_list: 1,
                 updatedIcons: JSON.stringify(allIcons) // 传递更新后的图标数据
             })
         })
