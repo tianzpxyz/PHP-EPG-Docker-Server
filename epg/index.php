@@ -337,21 +337,23 @@ function liveFetchHandler($query_params) {
 
     // 如果启用代理模式
     if (!empty($query_params['proxy'])) {
-        if ($queryType === 'm3u') {
-            $content = preg_replace_callback('/^(?!#)(.+)$/m', function ($m) use ($Config, $serverUrl) {
-                $url = trim($m[1]);
-                [$enc, $suffix] = strpos($url, '$') !== false ? explode('$', $url, 2) : [$url, ''];
-                $enc = urlencode(encryptUrl($enc, $Config['token']));
-                return $serverUrl . '/proxy.php?url=' . $enc . ($suffix !== '' ? '$' . $suffix : '');
-            }, $content);
-        } elseif ($queryType === 'txt') {
-            $content = preg_replace_callback('/^([^,#]+),(.+)$/m', function ($m) use ($Config, $serverUrl) {
-                $url  = trim($m[2]);
-                [$enc, $suffix] = strpos($url, '$') !== false ? explode('$', $url, 2) : [$url, ''];
-                $enc = urlencode(encryptUrl($enc, $Config['token']));
-                return $m[1] . ',' . $serverUrl . '/proxy.php?url=' . $enc . ($suffix !== '' ? '$' . $suffix : '');
-            }, $content);
-        }
+        $buildProxyUrl = function (string $url) use ($Config, $serverUrl): string {
+            if ($url == 'null') return $url;
+            [$enc, $suffix] = strpos($url, '$') !== false ? explode('$', $url, 2) : [$url, ''];
+            $enc = urlencode(encryptUrl($enc, $Config['token']));
+            return $serverUrl . '/proxy.php?url=' . $enc . ($suffix !== '' ? '$' . $suffix : '');
+        };
+
+        $content = preg_replace_callback('/^(?!#)(.+)$/m', function ($m) use ($buildProxyUrl, $queryType) {
+            $line = trim($m[1]);
+            if ($queryType === 'txt') {
+                [$name, $url] = explode(',', $line, 2);
+                $url = trim($url);
+                return isset($url[0]) && $url[0] !== '#' ? $name . ',' . $buildProxyUrl($url) : $line;
+            } elseif ($queryType === 'm3u') {
+                return $buildProxyUrl($line);
+            }
+        }, $content);
     }
 
     // 统一处理代理/非代理 URL 标记
