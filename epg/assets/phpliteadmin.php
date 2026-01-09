@@ -443,7 +443,7 @@ ini_set('session.cookie_httponly', '1');
 session_start();
 
 // 检查是否有权限访问 phpliteadmin.php
-if (!isset($_SESSION['can_access_phpliteadmin']) || $_SESSION['can_access_phpliteadmin'] !== true) {
+if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     // 显示错误信息并跳转到 manage.php
     echo '<div style="display: flex; justify-content: center; align-items: center; height: 100vh;">请通过管理页面访问。<br>正在跳转……</div>';
     

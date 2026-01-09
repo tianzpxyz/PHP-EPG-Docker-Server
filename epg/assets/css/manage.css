@@ -49,11 +49,11 @@ textarea:disabled {
 }
 
 textarea[id="xml_urls"] {
-    min-height: 122px;
+    min-height: 152px;
 }
 
 textarea[id="channel_mappings"] {
-    min-height: 142px;
+    min-height: 155px;
 }
 
 textarea[id="gen_list_text"] {
@@ -64,56 +64,61 @@ textarea[id="sourceUrlTextarea"] {
     min-height: 102px;
 }
 
-.form-row {
-    display: flex;
-    align-items: center;
-    margin-bottom: 10px;
-}
-
-.label-days-to-keep {
-    width: 98px;
-}
-
-.custom-margin1 {
-    margin-left: 195px;
-}
-
-.custom-margin2,
-.custom-margin3 {
-    margin-left: 70px;
-}
-
-.form-row select, 
-.modal-content select,
-input[type="time"] {
+.form-grid-item select,
+.form-grid-item input,
+.modal-content select {
     font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", Arial, sans-serif;
     font-size: 15px;
     border: 1px solid #ccc;
     border-radius: 5px;
     box-sizing: border-box;
-    width: 98px;
+    width: 85px;
     height: 32px;
-    margin-right: 12px;
     text-align: center;
 }
 
-input[type="time"] {
-    width: 90px;
-    margin-right: 0px;
+.modal-content select[id="live_source_config"] {
+    height: 26px;
+    font-size: 14px;
+    margin-right: 12px;
 }
 
-.form-row input[id="start_time"] {
-    margin-left: 292px;
+.form-grid-container-single-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr); 
+    gap: 10px; 
+    align-items: center; 
+    width: 100%;
+    justify-items: end;
 }
 
-.form-row input[id="end_time"],
-select[id="interval_hour"]{
-    margin-left: 44px;
+.form-grid-item {
+    display: flex;
+    align-items: center;
+    gap: 5px; 
+    flex-wrap: nowrap;
 }
 
-.form-row select[id="interval_hour"], select[id="interval_minute"] {
-    width: 70px;
-    margin-right: 0px;
+#interval-task-label {
+    margin-right: -10px;
+}
+
+.interval-controls {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-grow: 1;
+    white-space: nowrap;
+    flex-wrap: nowrap;
+}
+
+.interval-controls select {
+    width: 55px;
+}
+
+.form-grid-item label {
+    white-space: nowrap; 
+    flex-shrink: 0;
 }
 
 a, .blue-span {
@@ -124,6 +129,10 @@ a, .blue-span {
 
 a:hover, .blue-span:hover {
     color: #0056b3;
+}
+
+.footer a {
+    color: #333;
 }
 
 .button-container {
@@ -207,10 +216,19 @@ input[type="tel"] {
 }
 
 .footer {
-    position: fixed;
-    bottom: 10px;
-    width: 100%;
+    position: fixed !important;
+    bottom: 0;
+    left: 0;
+    width: 100% !important;
+    padding: 12px 0;
     text-align: center;
+    background-color: rgba(243, 243, 243, 0.8);
+    z-index: 999;
+    box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+    margin-top: 0 !important;
+
+    -webkit-backdrop-filter: blur(30px);
+    backdrop-filter: blur(30px);
 }
 
 .modal {
@@ -310,7 +328,7 @@ input[type="tel"] {
 }
 
 .table-container[id="access-stats-table-container"] {
-    height: 467px;
+    height: 471px;
 }
 
 #logTable, #channelMatchTable, #channelTable, 
@@ -433,6 +451,7 @@ h2, span, label {
 .row label {
     white-space: nowrap; /* 确保label不会换行 */
     margin-right: 0px;
+    width: 100%;
 }
 
 .row select,
@@ -580,11 +599,23 @@ input[type="checkbox"] {
     transition: opacity 0.5s ease;
 }
 
+/* 默认隐藏 */
+.mobile-br {
+    display: none;
+}
 
 /* 暗色模式 */
 body.dark {
     background-color: #121212;
     color: #e0e0e0;
+}
+
+body.dark .footer {
+    background-color: rgba(31, 31, 31, 0.8);
+    box-shadow: 0 -2px 5px rgba(255, 255, 255, 0.05);
+
+    -webkit-backdrop-filter: blur(30px);
+    backdrop-filter: blur(30px);
 }
   
 body.dark .container,
@@ -616,6 +647,10 @@ body.dark .blue-span {
 body.dark a:hover,
 body.dark .blue-span:hover {
     color: #3399ff;
+}
+
+body.dark .footer a {
+    color: #ddd;
 }
 
 body.dark .button-container a,
@@ -704,4 +739,191 @@ body.dark .checkbox-label .label-text {
 
 body.dark .checkbox-label .ball {
     background-color: #222;
+}
+
+/* 移动端布局 */
+@media screen and (max-width: 1100px) {
+
+    body {
+        overflow-x: hidden !important;
+        max-width: 100% !important;
+        display: block !important;
+        padding: 10px 10px 80px;
+        height: auto;
+    }
+
+    .container {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 15px;
+        margin: 0 !important;
+        box-sizing: border-box;
+    }
+
+    .form-row,
+    .row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    #filteredLog,
+    #execLog {
+        font-size: 13px;
+        width: 100% !important;
+    }
+
+    .form-row label,
+    .row label {
+        display: block !important;
+        width: 80% !important;
+        margin-bottom: 5px;
+    }
+
+    .form-row,
+    .row,
+    .column {
+        width: 100% !important;
+    }
+
+    textarea {
+        font-size: 14px !important;
+        min-height: 200px !important;
+    }
+
+    input {
+        font-size: 15px !important;
+    }
+
+    .button-container {
+        display: grid !important;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+    }
+
+    .button-container-check-speed,
+    .button-container-source-setting,
+    .button-container-access-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .button-container button,
+    .button-container a {
+        width: 100% !important;
+        font-size: 15px !important;
+    }
+
+    .live-source-modal-content .button-container {
+        width: 100% !important;
+    }
+
+    .modal-content {
+        position: fixed !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        top: calc((100dvh - 70px) / 2) !important;
+        width: 95% !important;
+        max-width: 95% !important;
+        max-height: calc(90dvh - 50px) !important; 
+        padding: 15px !important;
+        box-sizing: border-box;
+        overflow: auto;
+    }
+
+    .modal-inner {
+        width: calc(100vw - 50px) !important;
+        max-width: 100%;
+    }
+
+    .message-modal-content {
+        width: auto !important;
+    }
+
+    .message-modal-content.fullsize-modal {
+        width: 1000px !important;
+    }
+
+    .modal-content::-webkit-scrollbar {
+        display: none;
+    }
+
+    .modal-content .table-container {
+        overflow-x: auto !important;
+        box-sizing: border-box;
+        font-size: 13px;
+    }
+
+    .icon-modal-content table {
+        min-width: 650px;
+    }
+
+    .live-source-modal-content table,
+    .update-log-modal-content table {
+        min-width: 900px;
+    }
+
+    #paginationContainer button {
+        width: 18px;
+        height: 16px;
+        font-size: 13px;
+    }
+
+    h2 {
+        margin-top: 5px;
+    }
+
+    .checkbox-label {
+        margin-top: 5px;
+        transform: scale(0.9);
+    }
+
+    .checkbox-label .label-text {
+        font-size: 6px;
+    }
+
+    .form-grid-container-single-row {
+        grid-template-columns: 1fr;
+        justify-items: start;
+    }
+
+    .form-grid-item select,
+    .modal-content select {
+        height: 26px;
+    }
+
+    .form-grid-item .start-time-label {
+        display: block;
+    }
+
+    .mobile-br {
+        display: block;
+        margin-top: 5px;
+    }
+
+    #sourceUrlTextarea {
+        margin-top: 10px;
+    }
+
+    #url {
+        display: block;
+    }
+
+    #interval-task-label {
+        margin-left: 0px;
+    }
+    
+    #logTable,
+    #cronLogContent,
+    #accessLogContent {
+        font-family: monospace !important;
+        font-size: 13px !important;
+    }
+
+    #cronLogContent {
+        white-space: nowrap;
+    }
+
+    #donationImg {
+        width: 85vw;
+    }
 }

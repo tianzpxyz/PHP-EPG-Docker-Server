@@ -6,6 +6,7 @@ LOG_LEVEL="${LOG_LEVEL:-info}"
 TZ="${TZ:-Asia/Shanghai}"
 PHP_MEMORY_LIMIT="${PHP_MEMORY_LIMIT:-512M}"
 ENABLE_FFMPEG="${ENABLE_FFMPEG:-false}"
+ENABLE_IPV6="${ENABLE_IPV6:-false}"
 
 HTTP_PORT="${HTTP_PORT:-80}"
 HTTPS_PORT="${HTTPS_PORT:-443}"
@@ -39,6 +40,22 @@ if [ "$ENABLE_HTTPS" = "true" ]; then
     fi
 fi
 
+# Create reusable FastCGI configuration file
+echo "Creating reusable FastCGI configuration file: /etc/nginx/php-fastcgi.conf"
+cat <<'EOF' > /etc/nginx/php-fastcgi.conf
+include fastcgi_params;
+fastcgi_pass 127.0.0.1:9000;
+fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+fastcgi_param REWRITE_ENABLE 1;
+fastcgi_buffers 16 32k;
+fastcgi_buffer_size 32k;
+fastcgi_index index.php;
+fastcgi_read_timeout 300s;
+fastcgi_send_timeout 300s;
+EOF
+
+
+# Generate Nginx configuration
 echo "Generating Nginx configuration..."
 
 # Common locations config
@@ -62,12 +79,7 @@ location = /t.xml.gz { rewrite ^ /index.php?type=gz&$query_string last; }
 
 # PHP FastCGI
 location ~ \.php$ {
-    include fastcgi_params;
-    fastcgi_pass 127.0.0.1:9000;
-    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-    fastcgi_index index.php;
-    fastcgi_read_timeout 300s;
-    fastcgi_send_timeout 300s;
+    include /etc/nginx/php-fastcgi.conf;
 }
 
 # Allow larger uploads
@@ -93,6 +105,7 @@ if [ "$ENABLE_HTTPS" = "true" ]; then
 cat <<EOF > /etc/nginx/http.d/default.conf
 server {
     listen ${HTTP_PORT};
+    listen [::]:${HTTP_PORT};
     server_name ${SERVER_NAME};
     return 301 https://\$host\$request_uri;
 }
@@ -101,6 +114,7 @@ EOF
 cat <<EOF > /etc/nginx/http.d/default.conf
 server {
     listen ${HTTP_PORT};
+    listen [::]:${HTTP_PORT};
     server_name ${SERVER_NAME};
     root /htdocs;
 
@@ -117,6 +131,7 @@ cat <<EOF >> /etc/nginx/http.d/default.conf
 
 server {
     listen ${HTTPS_PORT} ssl;
+    listen [::]:${HTTPS_PORT} ssl;
     server_name ${SERVER_NAME};
 
     ssl_certificate     ${CERT_FILE};
@@ -137,6 +152,7 @@ else
 cat <<EOF > /etc/nginx/http.d/default.conf
 server {
     listen ${HTTP_PORT};
+    listen [::]:${HTTP_PORT};
     server_name ${SERVER_NAME};
     root /htdocs;
 
@@ -149,6 +165,11 @@ EOF
 
 fi
 
+# IPv6 control (default OFF)
+if [ "$ENABLE_IPV6" != "true" ]; then
+    echo "IPv6 disabled by configuration, removing IPv6 listen directives"
+    sed -i '/listen \[::\]/d' /etc/nginx/http.d/default.conf
+fi
 
 # Apply PHP settings
 sed -i "s/memory_limit = .*/memory_limit = ${PHP_MEMORY_LIMIT}/" /etc/php83/php.ini

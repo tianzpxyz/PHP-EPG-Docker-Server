@@ -245,7 +245,7 @@ if (defined('FM_EMBED')) {
 }
 
 // 检查是否有权限访问 tinyfilemanager.php
-if (!isset($_SESSION['can_access_tinyfilemanager']) || $_SESSION['can_access_tinyfilemanager'] !== true) {
+if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     // 显示错误信息并跳转到 manage.php
     echo '<div style="display: flex; justify-content: center; align-items: center; height: 100vh;">请通过管理页面访问。<br>正在跳转……</div>';
         
