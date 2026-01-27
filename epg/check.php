@@ -27,6 +27,7 @@ if (php_sapi_name() !== 'cli' && (empty($_SESSION['loggedin']) || $_SESSION['log
     http_response_code(403);
     exit('无访问权限，请先登录。');
 }
+session_write_close();
 
 // 检测 ffmpeg 是否安装
 if (!shell_exec('which ffprobe')) {
@@ -113,8 +114,18 @@ $total = count($channels);
 $testedUrls = [];
 
 foreach ($channels as $i => $channel) {
-    // 多行只取最后一行
     $oriUrl = $channel[$streamUrlIndex];
+
+    // 获取 http-referrer、http-user-agent
+    $headers = [];
+    if (preg_match('/^#EXTVLCOPT:http-referrer=(.+)$/mi', $oriUrl, $m)) {
+        $headers['Referer'] = trim($m[1]);
+    }
+    if (preg_match('/^#EXTVLCOPT:http-user-agent=(.+)$/mi', $oriUrl, $m)) {
+        $headers['User-Agent'] = trim($m[1]);
+    }
+
+    // 取最后一行为 URL
     $raw = preg_split('/\r\n|\r|\n/', trim($oriUrl));
     $raw = trim(end($raw));
 
@@ -151,7 +162,19 @@ foreach ($channels as $i => $channel) {
     } else {
         // 使用 ffprobe 测速
         $startTime = microtime(true);
-        $cmd = "ffprobe -rw_timeout 2000000 -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 \"{$streamUrl}\"";
+
+        // 拼接 headers
+        $headerStr = '';
+        foreach ($headers as $k => $v) {
+            $headerStr .= "{$k}: {$v}\r\n";
+        }
+        $headerStr = $headerStr ? '-headers ' . escapeshellarg($headerStr) . ' ' : '';
+
+        $cmd = "ffprobe -rw_timeout 2000000 {$headerStr}"
+             . "-v error -select_streams v:0 "
+             . "-show_entries stream=width,height "
+             . "-of csv=p=0 "
+             . escapeshellarg($streamUrl);
         exec($cmd, $output, $returnVar);
         $duration = round((microtime(true) - $startTime) * 1000);
 
