@@ -15,6 +15,7 @@ if (php_sapi_name() !== 'cli' && (empty($_SESSION['loggedin']) || $_SESSION['log
     http_response_code(403);
     exit('无访问权限，请先登录。');
 }
+session_write_close();
 
 // 禁用 PHP 输出缓冲
 ob_implicit_flush(true);
@@ -466,14 +467,15 @@ function processIconListAndXmltv($db, $gen_list_mapping, &$log_messages) {
         foreach ($programs as $programIndex => &$program) {
             $data = json_decode($program['epg_diyp'], true);
             $dataCount = count($data['epg_data']);
-            $end_date = $program['date'];
+            $start_date = $end_date = $program['date'];
         
             for ($index = 0; $index < $dataCount; $index++) {
                 $item = $data['epg_data'][$index];
+                $start_time = $item['start'];
                 $end_time = $item['end'];
         
                 // 如果结束时间为 00:00，切换到第二天的日期
-                if ($end_time == '00:00') {
+                if ($start_time != '00:00' && $end_time == '00:00') {
                     $end_date = date('Ymd', strtotime($end_date . ' +1 day'));  // 切换日期
         
                     // 合并下一个节目
@@ -492,7 +494,7 @@ function processIconListAndXmltv($db, $gen_list_mapping, &$log_messages) {
                 // 写入当前节目
                 $xmlWriter->startElement('programme');
                 $xmlWriter->writeAttribute('channel', htmlspecialchars($channelName, ENT_XML1, 'UTF-8'));
-                $xmlWriter->writeAttribute('start', formatTime($program['date'], $item['start']));
+                $xmlWriter->writeAttribute('start', formatTime($start_date, $start_time));
                 $xmlWriter->writeAttribute('stop', formatTime($end_date, $end_time));
                 $xmlWriter->startElement('title');
                 $xmlWriter->writeAttribute('lang', 'zh');
