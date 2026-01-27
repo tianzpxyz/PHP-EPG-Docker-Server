@@ -816,6 +816,13 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                     
                     $originalChannelName = trim($parts[0]);
                     $rawUrl = trim($parts[1]);
+
+                    // 将 extInfOpt 转成 key="value" 字符串
+                    $chExtInfOptStr = implode(' ', array_map(
+                        function($k, $v){ return $k . '="' . $v . '"'; },
+                        array_keys($extInfOpt),
+                        $extInfOpt
+                    ));
                     
                     // 分割多个流URL（以#分隔）
                     $urlParts = explode('#', $rawUrl);
@@ -851,7 +858,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                             'source' => $sourceUrl,
                             'tag' => $tag,
                             'config' => $liveSourceConfig,
-                            'chInfOpt' => [],
+                            'chInfOpt' => $chExtInfOptStr,
                         ];
                         
                         $urlChannelData[] = $rowData;
@@ -1079,6 +1086,17 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                 // 如果指定了频道，先遍历 $groupChannels，保证顺序不变
                 foreach ($groupChannels as $index => $groupChannelName) {
                     $cleanChsGroupChannelName = $cleanChsGroupChannelNames[$index];
+                    $cleanChsGroupChannelName = explode(':', $cleanChsGroupChannelName, 2)[0];
+
+                    // 提取纯频道名及允许来源
+                    $rawChannelName = $groupChannelName;
+                    $channelSources = [];
+                    if (strpos($rawChannelName, ':"') !== false) {
+                        preg_match_all('/:"([^"]+)"/', $rawChannelName, $m);
+                        $channelSources = $m[1];
+                    }
+                    $groupChannelName = explode(':', $groupChannelName, 2)[0];
+
                     foreach ($channelData as $row) {
                         [
                             'groupPrefix'    => $groupPrefix,
@@ -1094,7 +1112,8 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                         ] = $row;
 
                         // 检查来源匹配
-                        if (!empty($groupInfo['source']) && !in_array($source, $groupInfo['source'])) {
+                        $allowSources = $channelSources ?: ($groupInfo['source'] ?? []);
+                        if ($allowSources && !in_array($source, $allowSources)) {
                             continue;
                         }
 
