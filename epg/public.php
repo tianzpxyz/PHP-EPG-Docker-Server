@@ -1022,7 +1022,18 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
             } else {
                 $channels = array_map('trim', explode(',', $line));
                 foreach ($channels as $channel) {
-                    $templateGroups[$currentGroup]['channels'][] = $channel;
+                    // 提取频道名及允许来源
+                    $channelSources = [];
+                    if (strpos($channel, ':"') !== false) {
+                        preg_match_all('/:"([^"]+)"/', $channel, $m);
+                        $channelSources = $m[1];
+                        $channel = explode(':', $channel, 2)[0];
+                    }
+
+                    $templateGroups[$currentGroup]['channels'][] = [
+                        'name'   => $channel,
+                        'source' => $channelSources,
+                    ];
                 }
             }
         }
@@ -1081,21 +1092,14 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
             } else {
                 // 获取繁简转换后的模板频道名称
                 $groupChannels = $groupInfo['channels'];
-                $cleanChsGroupChannelNames = t2sBatch(array_map('cleanChannelName', $groupChannels));
+                $groupChannelNames = array_column($groupChannels, 'name');
+                $cleanChsGroupChannelNames = t2sBatch(array_map('cleanChannelName', $groupChannelNames));
 
-                // 如果指定了频道，先遍历 $groupChannels，保证顺序不变
-                foreach ($groupChannels as $index => $groupChannelName) {
+                // 如果指定了频道，先遍历 $groupChannelNames，保证顺序不变
+                foreach ($groupChannels as $index => $channelInfo) {
+                    $groupChannelName = $channelInfo['name'];
                     $cleanChsGroupChannelName = $cleanChsGroupChannelNames[$index];
-                    $cleanChsGroupChannelName = explode(':', $cleanChsGroupChannelName, 2)[0];
-
-                    // 提取纯频道名及允许来源
-                    $rawChannelName = $groupChannelName;
-                    $channelSources = [];
-                    if (strpos($rawChannelName, ':"') !== false) {
-                        preg_match_all('/:"([^"]+)"/', $rawChannelName, $m);
-                        $channelSources = $m[1];
-                    }
-                    $groupChannelName = explode(':', $groupChannelName, 2)[0];
+                    $channelSources = $channelInfo['source'];
 
                     foreach ($channelData as $row) {
                         [
