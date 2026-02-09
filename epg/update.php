@@ -186,65 +186,88 @@ function getChannelBindEPG() {
 // 下载 XML 数据并存入数据库
 function downloadXmlData($xml_url, $userAgent, $db, &$log_messages, $gen_list, $white_list, $black_list, $time_offset, $replacePattern, $bindPattern) {
     global $Config;
-    ['body'  => $xml_data, 'error' => $error, 'mtime' => $mtime, 'success' => $success] = httpRequest($xml_url, $userAgent);
-    if ($success) {
-        if (substr($xml_data, 0, 2) === "\x1F\x8B") { // 通过魔数判断 .gz 文件
-            $mtime = $mtime ?: unpack('V', substr($xml_data, 4, 4))[1];
-            if (!($xml_data = gzdecode($xml_data))) {
-                logMessage($log_messages, '【解压失败】', true);
-                return;
-            }
+    $isLocalFile = (stripos($xml_url, '/data/epg/') === 0);
+    if ($isLocalFile) {
+        $xml_data = @file_get_contents(__DIR__ . $xml_url);
+        if ($xml_data === false) {
+            logMessage($log_messages, "【本地文件】 读取失败", true);
+            echo "<br>";
+            return;
         }
-        $mtimeStr = $mtime ? ' | 修改时间：' . date('Y-m-d H:i:s', $mtime) : '';
-
-        // 获取文件大小（字节）并转换为 KB/MB
-        $fileSize = strlen($xml_data);
-        $fileSizeReadable = $fileSize >= 1048576 
-            ? round($fileSize / 1048576, 2) . ' MB' 
-            : round($fileSize / 1024, 2) . ' KB';
-        logMessage($log_messages, "【下载】 成功 | xml 文件大小：{$fileSizeReadable}{$mtimeStr}");
-        
-        $xml_data = mb_convert_encoding($xml_data, 'UTF-8'); // 转换成 UTF-8 编码
-
-        // 简单验证XML格式
-        if (stripos(trim($xml_data), '<?xml') !== 0) {
-            static $retryCount = 0;
-            if ($retryCount < 5) {
-                $retryCount++;
-                logMessage($log_messages, "【格式错误！！！】 不是有效的XML文件，10秒后重试 ({$retryCount}/5)", true);
-                sleep(10);
-                return downloadXmlData($xml_url, $userAgent, $db, $log_messages, $gen_list, $white_list, $black_list, $time_offset, $replacePattern, $bindPattern);
-            } else {
-                logMessage($log_messages, "【格式错误！！！】 重试5次后仍不是有效的XML文件", true);
-                echo "<br>";
-                return;
-            }
-        }
-
-        // 应用多个字符串替换规则
-        if (!empty($replacePattern)) {
-            $jsonRules = json_decode($replacePattern, true);
-            
-            if (json_last_error() === JSON_ERROR_NONE && is_array($jsonRules)) {
-                // JSON格式
-                foreach ($jsonRules as $search => $replace) {
-                    $xml_data = str_replace($search, $replace, $xml_data);
-                }
-            }
-        }
-
-        if (($Config['cht_to_chs'] ?? 1) === 2) { $xml_data = t2s($xml_data); }
-        $db->beginTransaction();
-        try {
-            [$processCount, $skipCount] = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $time_offset, $bindPattern);
-            $db->commit();
-            logMessage($log_messages, "【更新】 成功：入库 {$processCount} 条，跳过 {$skipCount} 条");
-        } catch (Exception $e) {
-            $db->rollBack();
-            logMessage($log_messages, "【处理数据出错！！！】 " . $e->getMessage(), true);
-        }
+    
+        $mtime = @filemtime($xml_url) ?: null;
+        $success = true;
+        $error = null;
     } else {
+        ['body'  => $xml_data, 'error' => $error, 'mtime' => $mtime, 'success' => $success] = 
+            httpRequest($xml_url, $userAgent);
+    }
+
+    if (!$success) {
         logMessage($log_messages, "【下载】 失败！！！错误信息：$error", true);
+        echo "<br>";
+        return;
+    }
+
+    // 通过魔数判断 .gz 文件
+    if (substr($xml_data, 0, 2) === "\x1F\x8B") {
+        $mtime = $mtime ?: unpack('V', substr($xml_data, 4, 4))[1];
+        if (!($xml_data = gzdecode($xml_data))) {
+            logMessage($log_messages, '【解压失败】', true);
+            return;
+        }
+    }
+    $mtimeStr = $mtime ? ' | 修改时间：' . date('Y-m-d H:i:s', $mtime) : '';
+
+    // 获取文件大小（字节）并转换为 KB/MB
+    $fileSize = strlen($xml_data);
+    $fileSizeReadable = $fileSize >= 1048576 
+        ? round($fileSize / 1048576, 2) . ' MB' 
+        : round($fileSize / 1024, 2) . ' KB';
+    logMessage($log_messages, "【下载】 成功 | xml 文件大小：{$fileSizeReadable}{$mtimeStr}");
+    
+    $xml_data = mb_convert_encoding($xml_data, 'UTF-8'); // 转换成 UTF-8 编码
+
+    // 简单验证XML格式
+    if (stripos(trim($xml_data), '<?xml') !== 0) {
+        static $retryCount = 0;
+        if (!$isLocalFile && $retryCount < 5) {
+            $retryCount++;
+            logMessage($log_messages, "【格式错误！！！】 不是有效的XML文件，10秒后重试 ({$retryCount}/5)", true);
+            sleep(10);
+            return downloadXmlData(
+                $xml_url, $userAgent, $db, $log_messages, 
+                $gen_list, $white_list, $black_list, 
+                $time_offset, $replacePattern, $bindPattern
+            );
+        }
+
+        logMessage($log_messages, "【格式错误！！！】 重试5次后仍不是有效的XML文件", true);
+        echo "<br>";
+        return;
+    }
+
+    // 应用多个字符串替换规则
+    if (!empty($replacePattern)) {
+        $jsonRules = json_decode($replacePattern, true);
+        
+        if (json_last_error() === JSON_ERROR_NONE && is_array($jsonRules)) {
+            // JSON格式
+            foreach ($jsonRules as $search => $replace) {
+                $xml_data = str_replace($search, $replace, $xml_data);
+            }
+        }
+    }
+
+    if (($Config['cht_to_chs'] ?? 1) === 2) { $xml_data = t2s($xml_data); }
+    $db->beginTransaction();
+    try {
+        [$processCount, $skipCount] = processXmlData($xml_url, $xml_data, $db, $gen_list, $white_list, $black_list, $time_offset, $bindPattern);
+        $db->commit();
+        logMessage($log_messages, "【更新】 成功：入库 {$processCount} 条，跳过 {$skipCount} 条");
+    } catch (Exception $e) {
+        $db->rollBack();
+        logMessage($log_messages, "【处理数据出错！！！】 " . $e->getMessage(), true);
     }
     echo "<br>";
 }
@@ -705,11 +728,14 @@ if ($Config['notify'] ?? false) {
     if (empty($sckey)) {
         logMessage($log_messages, "【发送通知】 未设置 sckey，跳过发送");
     } else {
+        $ordered_messages = count($log_messages) > 1
+            ? array_merge([end($log_messages)], array_slice($log_messages, 0, -1))
+            : $log_messages;
         $log_message_str = implode("\n\n", array_map(function($msg) {
                 $isError = strpos($msg, 'color:red') !== false;
                 $plain = strip_tags($msg);
                 return ($isError ? '**' : '') . $plain . ($isError ? '**' : '');
-            }, $log_messages)) 
+            }, $ordered_messages)) 
             . "\n\n[项目地址：https://github.com/taksssss/iptv-tool](https://github.com/taksssss/iptv-tool)";
         $tag = 'IPTV工具箱';
         $short = date('Y-m-d H:i:s') . '：' . (trim($msg) ?: '节目数无变化。');
