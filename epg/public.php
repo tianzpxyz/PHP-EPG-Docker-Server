@@ -16,6 +16,7 @@ use Overtrue\PHPOpenCC\OpenCC; // 使用 OpenCC 库
 @mkdir(__DIR__ . '/data', 0755, true);
 $iconDir = __DIR__ . '/data/icon/'; @mkdir($iconDir, 0755, true);
 $liveDir = __DIR__ . '/data/live/'; @mkdir($liveDir, 0755, true);
+$epgDir = __DIR__ . '/data/epg/'; @mkdir($epgDir, 0755, true);
 $scriptsDir = __DIR__ . '/data/scripts/'; @mkdir($scriptsDir, 0755, true);
 $liveFileDir = __DIR__ . '/data/live/file/'; @mkdir($liveFileDir, 0755, true);
 file_exists($configPath = __DIR__ . '/data/config.json') || copy(__DIR__ . '/assets/defaultConfig.json', $configPath);
@@ -486,6 +487,28 @@ function getTag($sourceUrl, $groupTitle, $originalChannelName, $rawUrl) {
     return $tag;
 }
 
+// EXTKU9OPT 解析函数
+function parseExtKu9Opt($raw, $groupTitle = '') {
+    $json = json_decode($raw, true);
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($json)) {
+        return [];
+    }
+
+    // 普通 KV
+    if (!isset($json[$groupTitle])) {
+        return array_filter($json, 'is_scalar');
+    }
+
+    // 分组 KV
+    foreach ($json as $grp => $opts) {
+        if ($grp === $groupTitle) {
+            return array_filter($opts, 'is_scalar');
+        }
+    }
+
+    return [];
+}
+
 // 解析 txt、m3u 直播源，并生成直播列表（包含分组、地址等信息）
 function doParseSourceInfo($urlLine = null, $parseAll = false) {
     global $db;
@@ -535,7 +558,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
         $sourceUrl = trim(str_replace('\#', '#', $parts[0]));
 
         // 初始化
-        $groupPrefix = $userAgent = $replacePattern = $extvlcoptPattern = $proxy = $t2sopt = '';
+        $groupPrefix = $userAgent = $replacePattern = $extvlcoptPattern = $ku9Raw = $proxy = $t2sopt = '';
         $white_list = $black_list = $extInfOpt = [];
 
         foreach ($parts as $i => $part) {
@@ -591,6 +614,10 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                             $extInfOpt[$k] = $v;
                         }
                     }
+                    break;
+
+                case 'extku9opt':
+                    $ku9Raw = trim($value);
                     break;
 
                 case 'proxy':
@@ -804,13 +831,15 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
         } else {
             // 处理 TXT 格式的直播源
             $groupTitle = '';
+            $groupKu9Opt = '';
             foreach ($urlContentLines as $urlContentLine) {
                 $urlContentLine = trim($urlContentLine);
-                $parts = explode(',', $urlContentLine, 2);
+                $parts = explode(',', $urlContentLine);
                 
-                if (count($parts) == 2) {
+                if (count($parts) >= 2) {
                     if (stripos($parts[1], '#genre#') !== false) {
                         $groupTitle = trim($parts[0]); // 更新 group-title
+                        $groupKu9Opt = trim($parts[2]) ?? '';
                         continue;
                     }
                     
@@ -859,6 +888,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                             'tag' => $tag,
                             'config' => $liveSourceConfig,
                             'chInfOpt' => $chExtInfOptStr,
+                            'ku9Opt' => $groupKu9Opt,
                         ];
                         
                         $urlChannelData[] = $rowData;
@@ -876,6 +906,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
         // 将转换后的信息写回 urlChannelData
         foreach ($urlChannelData as $index => &$row) {
             // 如果不在白名单或在黑名单中，删除该行
+            $groupTitle = $row['groupTitle'];
             $chsChannelName = $chsChannelNames[$index];
             $chsGroupTitle = $chsGroupTitles[$index];
             $streamUrl = $row['streamUrl'];
@@ -889,12 +920,32 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                 unset($urlChannelData[$index]);
                 continue;
             }
-            
+
+            // 解析并生成 EXTKU9OPT
+            $ku9OptStr = '';
+            $ku9Opt = $ku9Raw ? parseExtKu9Opt($ku9Raw, $groupTitle) : [];
+
+            if (!empty($ku9Opt)) {
+                $pairs = [];
+                foreach ($ku9Opt as $k => $v) {
+                    $pairs[] = $k . '=' . $v;
+                }
+                $ku9OptStr = "#EXTKU9OPT:" . implode('#', $pairs) . "\n";
+            } elseif (!empty($row['ku9Opt'])) {
+                $ku9OptStr = "#EXTKU9OPT:" . $row['ku9Opt'] . "\n";
+            }
+
+            // 如果已有新的 EXTKU9OPT，移除 streamUrl 中旧的 EXTKU9OPT 行
+            if ($ku9OptStr !== '') {
+                $streamUrl = preg_replace('/^#EXTKU9OPT:.*$(\r?\n)?/m', '', $streamUrl);
+            }
+
             // 更新 streamUrl
-            $extOptStreamUrl = (!empty($row['chInfOpt']) 
-                ? "#EXTINFOPT:{$row['chInfOpt']}\n" 
-                : ""
-            ) . $extvlcoptPattern . $streamUrl;
+            $extOptStreamUrl = 
+                (!empty($row['chInfOpt']) ? "#EXTINFOPT:{$row['chInfOpt']}\n" : '')
+                . $ku9OptStr
+                . $extvlcoptPattern
+                . $streamUrl;
 
             // 如果该行已存在
             if (isset($existingData[$row['tag']])) {
@@ -914,7 +965,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
 
             $row['channelName'] = $liveChannelNameProcess ? $finalChannelName : ($t2sopt ? $chsChannelName : $row['channelName']);
             $row['chsChannelName'] = $chsChannelName;
-            $row['groupTitle'] = $t2sopt ? $chsGroupTitle : $row['groupTitle'];
+            $row['groupTitle'] = $t2sopt ? $chsGroupTitle : $groupTitle;
             $row['iconUrl'] = ($row['iconUrl'] ?? false) && ($Config['m3u_icon_first'] ?? false)
                             ? $row['iconUrl']
                             : (iconUrlMatch([$cleanChannelName, $oriChannelName]) ?: $row['iconUrl']);
@@ -1258,6 +1309,14 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
             }
         }
 
+        // 提取 EXTKU9OPT
+        if (preg_match('/#EXTKU9OPT:([^\n]+)/', $streamUrl, $m)) {
+            $value = trim($m[1]);
+            $ku9SecondaryGrouping
+                ? $groupHeaders[$row['category']][$genre]['ku9opt'] = $value
+                : $groupHeaders[$genre]['ku9opt'] = $value;
+        }
+
         // 取最后一行 URL
         $parts = explode("\n", $streamUrl);
         $rawUrl = end($parts);
@@ -1287,15 +1346,22 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                 : ($groupHeaders[$genre] ?? []);
 
             $headerStr = '';
+            $ku9Str = '';
             if (!empty($headers)) {
                 $parts = [];
                 if (!empty($headers['user-agent'])) $parts[] = '"User-Agent":"' . $headers['user-agent'] . '"';
                 if (!empty($headers['referrer']))  $parts[] = '"Referer":"' . $headers['referrer'] . '"';
                 if ($parts) $headerStr = ',HEADERS={' . implode(',', $parts) . '}';
+
+                if (!empty($headers['ku9opt']))  $ku9Str = ($headerStr ? '#' : ',') . $headers['ku9opt'];
             }
 
-            $txtContent .= $genre . ',#genre#' . $headerStr . "\n"
-                        . implode("\n", $channels) . "\n\n";
+            $txtContent .=
+                $genre . ',#genre#'
+                . $headerStr
+                . $ku9Str
+                . "\n"
+                . implode("\n", $channels) . "\n\n";
         }
     }
     
