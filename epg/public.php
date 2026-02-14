@@ -844,7 +844,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                     }
                     
                     $originalChannelName = trim($parts[0]);
-                    $rawUrl = trim($parts[1]);
+                    $rawUrl = trim(implode(',', array_slice($parts, 1))); // 兼容 URL 带逗号
 
                     // 将 extInfOpt 转成 key="value" 字符串
                     $chExtInfOptStr = implode(' ', array_map(
