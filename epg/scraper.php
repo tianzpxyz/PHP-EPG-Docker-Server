@@ -30,15 +30,23 @@
  * GitHub: https://github.com/taksssss/iptv-tool
  */
 
+/**
+ * 参考示例填入【EPG地址】
+ */
 $sourceHandlers = [
-
-    // 示例：tvmao, 湖南卫视
+    /**
+     * 示例：tvmao, 湖南卫视
+     * 格式：tvmao, 频道1:ID1, 频道2:ID2
+     */
     'tvmao' => [
         'match' => function ($url) { return stripos($url, 'tvmao') === 0; },
         'handler' => function ($url) { return tvmaoHandler($url); }
     ],
 
-    // 示例：cntv:2, CCTV4欧洲:cctveurope
+    /**
+     * 示例：cntv:2, CCTV4欧洲:cctveurope
+     * 格式：cntv:日期范围, 频道1:ID1, 频道2:ID2
+     */ 
     'cntv' => [
         'match' => function ($url) { return stripos($url, 'cntv') === 0; },
         'handler' => function ($url) { return cntvHandler($url); }
