@@ -87,6 +87,8 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     // 显示登录表单
     include 'assets/html/login.html';
     exit;
+} else {
+    session_write_close();
 }
 
 // 更新配置

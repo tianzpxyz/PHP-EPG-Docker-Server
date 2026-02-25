@@ -27,6 +27,7 @@ if (php_sapi_name() !== 'cli' && (empty($_SESSION['loggedin']) || $_SESSION['log
     http_response_code(403);
     exit('无访问权限，请先登录。');
 }
+session_write_close();
 
 // 检测 ffmpeg 是否安装
 if (!shell_exec('which ffprobe')) {
@@ -87,20 +88,20 @@ echo '<strong><span style="color: red;">前台测速过程中请勿关闭浏览�
 
 // 从数据库读取 channels 数据
 $channels = [];
-$headers = [];
+$channelHeaders = [];
 
 $stmt = $db->prepare("SELECT * FROM channels WHERE config = ?");
 $stmt->execute([$liveSourceConfig]);
 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-    if (!$headers) $headers = array_keys($row);
+    if (!$channelHeaders) $channelHeaders = array_keys($row);
     $channels[] = array_values($row);
 }
 
 // 定位字段索引
-$streamUrlIndex = array_search('streamUrl', $headers);
-$channelNameIndex = array_search('channelName', $headers);
-$disableIndex = array_search('disable', $headers);
-$modifiedIndex = array_search('modified', $headers);
+$streamUrlIndex = array_search('streamUrl', $channelHeaders);
+$channelNameIndex = array_search('channelName', $channelHeaders);
+$disableIndex = array_search('disable', $channelHeaders);
+$modifiedIndex = array_search('modified', $channelHeaders);
 
 // 确保必要字段存在
 if ($streamUrlIndex === false) {
@@ -113,8 +114,18 @@ $total = count($channels);
 $testedUrls = [];
 
 foreach ($channels as $i => $channel) {
-    // 多行只取最后一行
     $oriUrl = $channel[$streamUrlIndex];
+
+    // 获取 http-referrer、http-user-agent
+    $requestHeaders = [];
+    if (preg_match('/^#EXTVLCOPT:http-referrer=(.+)$/mi', $oriUrl, $m)) {
+        $requestHeaders['Referer'] = trim($m[1]);
+    }
+    if (preg_match('/^#EXTVLCOPT:http-user-agent=(.+)$/mi', $oriUrl, $m)) {
+        $requestHeaders['User-Agent'] = trim($m[1]);
+    }
+
+    // 取最后一行为 URL
     $raw = preg_split('/\r\n|\r|\n/', trim($oriUrl));
     $raw = trim(end($raw));
 
@@ -147,11 +158,24 @@ foreach ($channels as $i => $channel) {
     if (isset($testedUrls[$streamUrl])) {
         // 如果已经测速过，直接复用结果
         [$resolution, $speed, $disable, $modified] = $testedUrls[$streamUrl];
+        $channelsInfoMap[$oriUrl] = is_numeric($speed) ? (int)$speed : PHP_INT_MAX;
         echo "<em>复用测速结果：分辨率: {$resolution}, 访问速度: {$speed} ms</em><br><br>";
     } else {
         // 使用 ffprobe 测速
         $startTime = microtime(true);
-        $cmd = "ffprobe -rw_timeout 2000000 -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 \"{$streamUrl}\"";
+
+        // 拼接 headers
+        $requestHeaderStr = '';
+        foreach ($requestHeaders as $k => $v) {
+            $requestHeaderStr .= "{$k}: {$v}\r\n";
+        }
+        $requestHeaderStr = $requestHeaderStr ? '-headers ' . escapeshellarg($requestHeaderStr) . ' ' : '';
+
+        $cmd = "ffprobe -rw_timeout 2000000 {$requestHeaderStr}"
+             . "-v error -select_streams v:0 "
+             . "-show_entries stream=width,height "
+             . "-of csv=p=0 "
+             . escapeshellarg($streamUrl);
         exec($cmd, $output, $returnVar);
         $duration = round((microtime(true) - $startTime) * 1000);
 
@@ -184,14 +208,22 @@ foreach ($channels as $i => $channel) {
     }
 
     // 写入数据库
-    $stmt = $db->prepare(
-        ($Config['db_type'] === 'sqlite' ? "INSERT OR REPLACE" : "REPLACE") .
-        " INTO channels_info (streamUrl, resolution, speed) VALUES (?, ?, ?)"
-    );
+    $sql = "
+        INSERT INTO channels_info (streamUrl, resolution, speed)
+        VALUES (?, ?, ?)
+    ";
+    $sql .= ($Config['db_type'] === 'sqlite')
+        ? " ON CONFLICT(streamUrl) DO UPDATE SET
+                resolution = excluded.resolution,
+                speed = excluded.speed"
+        : " ON DUPLICATE KEY UPDATE
+                resolution = VALUES(resolution),
+                speed = VALUES(speed)";
+    $stmt = $db->prepare($sql);
     $stmt->execute([$oriUrl, $resolution, $speed]);
 
     // 更新内存映射和频道状态
-    $channelsInfoMap[$streamUrl] = is_numeric($speed) ? (int)$speed : PHP_INT_MAX;
+    $channelsInfoMap[$oriUrl] = is_numeric($speed) ? (int)$speed : PHP_INT_MAX;
     $channel[$disableIndex] = $disable;
     $channel[$modifiedIndex] = $modified;
     $channels[$i] = $channel;
@@ -237,11 +269,11 @@ $db->beginTransaction();
 $stmt = $db->prepare("DELETE FROM channels WHERE config = ?");
 $stmt->execute([$liveSourceConfig]);
 $channelsData = [];
-$placeholders = implode(', ', array_fill(0, count($headers), '?'));
-$sql = "INSERT INTO channels (" . implode(', ', $headers) . ") VALUES ($placeholders)";
+$placeholders = implode(', ', array_fill(0, count($channelHeaders), '?'));
+$sql = "INSERT INTO channels (" . implode(', ', $channelHeaders) . ") VALUES ($placeholders)";
 $stmt = $db->prepare($sql);
 foreach ($channels as $row) {
-    $channelsData[] = array_combine($headers, $row);
+    $channelsData[] = array_combine($channelHeaders, $row);
     $stmt->execute($row);
 }
 $db->commit();
